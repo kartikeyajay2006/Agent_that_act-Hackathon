@@ -216,7 +216,10 @@ class TrueForge:
         """First configuration builds a snapshot in the Daytona account, which can take several minutes."""
         catalog = self._req("GET", "/api/v1/catalogs/sandbox-providers").get("data", [])
         preset = next((p for p in catalog if p.get("type") == "daytona"), {"type": "daytona"})
-        manifest = {**preset, "auth": {"api_key": api_key}}
+        # Delete stopped sandboxes after 30 min (TrueForge's preset keeps them 5 days): every session creates one,
+        # and a free Daytona org caps total disk at 30 GiB, which repeated rehearsals exhaust.
+        manifest = {**preset, "auth": {"api_key": api_key}, "auto_archive_interval_in_minutes": 0,
+                    "auto_delete_interval_in_minutes": 30}  # fmt: skip
         self._req("PUT", "/api/v1/settings/sandbox-providers", {"manifest": manifest}, timeout=1200)
 
     def sandbox_provider(self) -> str | None:
@@ -224,7 +227,9 @@ class TrueForge:
             data = self._req("GET", "/api/v1/settings/sandbox-providers").get("data")
         except TrueForgeError:
             return None
-        return (data or {}).get("type") if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return None
+        return (data.get("manifest") or data).get("type")
 
     def configure_skill(self, *, repo_url: str, ref: str, path: str) -> None:
         manifest = {

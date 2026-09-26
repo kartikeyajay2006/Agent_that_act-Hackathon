@@ -21,18 +21,18 @@ action.
 
 | Criterion | Now | Why | After the must-dos |
 |---|---:|---|---:|
-| Harness doing the work (30) | 26–29 | A configured real-model approval evaluation now scored **100/100**: generated sandbox code, native gate, attested rollback and recovery. Repeat it after any prompt/model change. | 27–30 |
-| It actually runs (25) | 15–19 | `up.sh`, `doctor.sh`, rehearsal mode, pinned TrueForge. Tested on **one** Fedora laptop only. Needs Docker, Node ≥ 22.14, uv, and a model key. | 20–23 |
-| Where it stops (20) | 17–19 | Two-layer gate (TrueForge + attestation), single-use approvals, allowlists, rate limit, no shell. Deny path proven. | 18–20 |
-| Job worth handing over (15) | 11–13 | Incident response is real, repetitive, time-critical toil. Two scenarios are configured, but the alternate still needs an end-to-end rehearsal. | 12–14 |
-| Demo clarity (10) | 0–4 | Runbook and screenshots exist; **no video recorded**. | 8–10 |
-| **Total** | **~63–79** | | **~84–96** |
+| Harness doing the work (30) | 26–29 | Real model through TrueForge end to end: tools, **agent-written code in the Daytona sandbox**, native gate with the brief in the approval panel, attested rollback. Scored by `eval.sh`: approve 100, deny 94. | 28–30 |
+| It actually runs (25) | 17–20 | `setup.sh` → `up.sh`, `doctor.sh`, `preflight.sh`, `demo-ready.sh`, pinned TrueForge, gateway model. Timed on **one** Fedora laptop only. | 21–24 |
+| Where it stops (20) | 18–20 | Two-layer gate, single-use attested approvals, allowlists, rate limit, no shell; every real-model deny run held. | 19–20 |
+| Job worth handing over (15) | 11–13 | Real, repetitive on-call toil with a human keeping the one irreversible decision. Two scenarios share the tools; the latency scenario still needs a full rehearsal. | 12–14 |
+| Demo clarity (10) | 3–5 | Video script, runbook, screenshots exist; **video not recorded yet**. | 8–10 |
+| **Total** | **~75–87** | | **~88–98** |
 
 ## Must-do before submitting (in this order)
 
 | # | Task | Why it matters | Time | Done when |
 |---|---|---|---|---|
-| 1 | **Repeat the real-model evaluation twice before presenting.** The configured model has one 100/100 approve run. Use `./scripts/eval.sh --scenario approve --runs 2` after any model or prompt change. | Repeated evidence is stronger than a single perfect run | 10–15 min | Three consecutive runs reach the gate with a correct approval brief, and recover after Allow |
+| 1 | **Run `./scripts/eval.sh` after the final prompt/model change.** Approve, deny and false alarm, scored. | Fresh, repeatable evidence right before judging | 8 min | approve ≥ 90, deny ≥ 90, no safety check failed |
 | 2 | **Check the model writes code in the sandbox.** Watch for two `exec` steps (its own script, then the analyzer). If it skips 5a, tighten `agent/forgesre.system.md` and re-run setup. | "run **generated** code in the sandbox" is literally in the rubric | 15–30 min | Session trace shows a script the model wrote |
 | 3 | **Fresh-laptop test.** A teammate who has not seen the repo clones it on *their* machine (ideally macOS) and follows only the README. Time it, note every snag, fix the README or scripts. | 25-pt criterion is judged exactly this way | 45–60 min | Up and healthy in < 15 min without help |
 | 4 | **Record the video (≤ 5 min).** Follow `docs/demo.md`. Must show: tool calls in TrueForge, the sandbox step, the restart failing verification, the **Allow/Deny panel**, recovery. Add a 20 s Deny clip. | Required deliverable + 10-pt criterion | 45 min | Uploaded, linked in README |
@@ -43,16 +43,15 @@ action.
 
 | Task | Gain | Effort |
 |---|---|---|
-| Daytona key (`DAYTONA_API_KEY`) so the sandbox is the provider TrueForge documents, and the skill attaches | Stronger "harness" story; removes the Fedora/bwrap caveat | 15 min |
-| Shorter verification for the live demo: `settle_seconds: 20`, `metric_window: 20s` in `config/verification.yaml` | Reduces the configured settling delay for two verification passes from ~60 s to ~40 s | Configured; rehearse within the 5-minute demo |
-| Pick a fast model from the configured provider's live catalog for stage; keep a pre-recorded run as backup (see `docs/stage-model.md`) | Venue Wi-Fi and model latency are the biggest live risks; model ID and credentials stay in ignored `.env`, not code | Choose and validate the model, then capture/review a credential-free backup |
-| Add a second incident type using the same tools: configurable processor-latency regression (see `config/incidents.yaml` and `docs/demo.md`) | Demonstrates diagnosis beyond database pool pressure without adding another tool surface | Implemented; end-to-end rehearsal still needed |
-| Trigger from a schedule or webhook instead of a typed prompt (TrueForge schedules) | Looks like real on-call, not a chat | Configurable paused schedule implemented; activation and rehearsal still needed |
-| Build-story write-up from `docs/implementation.md` → "Problems found while building" | Separate community prize for best build story | Evidence-backed draft added; team voice/review still needed |
+| Check Daytona free-space and configured cleanup before a live run | The provider's disk cap can silently block sandbox startup | 2 min |
+| Rehearse the shorter verification profile (`settle_seconds`, `metric_window`) from `config/verification.yaml` | Check that the configured timing fits the five-minute demo on the target stack | Rehearsal |
+| Choose a fast model from the active provider catalog and keep a pre-recorded backup (see `docs/stage-model.md`) | Venue Wi-Fi and model latency are major live risks; credentials and model selection stay in ignored `.env` | Choose, verify and record |
+| Rehearse the configurable processor-latency incident with the same tools | Demonstrates the diagnosis is not a one-scenario trick | End-to-end rehearsal needed |
+| Review and explicitly activate the configured read-only TrueForge schedule | Shows a non-chat trigger without enabling remediation tools | Schedule is configurable and paused by default |
+| Personalize the build story in `docs/build-story.md` and review the implementation notes | Makes the community-prize write-up specific to the team's experience | Team review needed |
 
 ## Things we should not claim
 
-- That a frontier model has run the whole incident end to end — until task 1 is done.
 - That it works on macOS or Windows — until task 3 is done on such a machine (Windows would need WSL2).
 - That the scripted model is the agent. It is a test double; the demo must use a real model.
 - That TrueForge local mode is production-grade — it has no login; the attestation reads the local API.

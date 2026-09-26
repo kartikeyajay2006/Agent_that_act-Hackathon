@@ -261,7 +261,12 @@ async def run_synthetic_check(
 @mcp.tool(annotations=PROBE)
 async def verify_recovery(
     settle_seconds: Annotated[
-        int | None, Field(ge=0, le=90, description="Seconds after the last action to wait before measuring")
+        int | None,
+        Field(
+            ge=0,
+            le=90,
+            description="Seconds after the last action to wait before measuring; never shorter than the metric window",
+        ),
     ] = None,
 ) -> dict[str, Any]:
     """Objective recovery check against config/verification.yaml thresholds: active version readiness,
@@ -277,7 +282,7 @@ async def verify_recovery(
 @mcp.tool(annotations=YELLOW)
 async def restart_service(
     service: Annotated[str, Field(description="Instance to restart, e.g. payment-service-v2")],
-    reason: Annotated[str, Field(min_length=10, max_length=300, description="Why, citing evidence")],
+    reason: Annotated[str, Field(min_length=10, max_length=4000, description="Why, citing evidence (stored trimmed)")],
 ) -> dict[str, Any]:
     """YELLOW action: restart one allow-listed container and wait for it to become live. Policy limits
     restarts per target per window; stateful services (postgres) can never be restarted. Completion only
@@ -293,12 +298,14 @@ async def rollback_deployment(
     service: Annotated[str, Field(description="Versioned service to roll back, e.g. payment-service")],
     from_version: Annotated[str, Field(pattern=r"^v[0-9]{1,3}$", description="Currently active version")],
     to_version: Annotated[str, Field(pattern=r"^v[0-9]{1,3}$", description="Known-good version to restore")],
-    reason: Annotated[str, Field(min_length=20, max_length=500, description="Evidence-backed justification")],
+    reason: Annotated[
+        str, Field(min_length=20, max_length=4000, description="Evidence-backed justification (stored trimmed)")
+    ],
     approval_brief: Annotated[
         str,
         Field(
             min_length=80,
-            max_length=3000,
+            max_length=8000,
             description=(
                 "Completed human-facing rollback brief: hypothesis, numeric evidence, failed safe action, "
                 "blast radius, target readiness and recovery plan. This is displayed in TrueForge before approval."

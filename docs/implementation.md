@@ -82,7 +82,7 @@ Status legend: ✅ built and verified by a test or a recorded run · 🟡 built,
 
 | Check | Result |
 |---|---|
-| `pytest` (units + safety) | 63 passed — parsing, thresholds, report numbers, TrueForge event parsing, injection, allowlists, rate limits, rollback validation, attestation refusal and replay |
+| `pytest` (units + safety) | 64 passed — parsing, thresholds, report numbers, TrueForge event parsing, injection, allowlists, rate limits, rollback validation, attestation refusal and replay |
 | `pytest -m integration` (live stack) | 12 passed — reset, healthy baseline, incident, logs/metrics/DB evidence, correct container restarted, restart NOT recovered, real rollback, RECOVERED, reset again, MCP auth |
 | `test_trueforge_lifecycle.py[allow]` | passed — TrueForge routed 12 tool calls, 2 sandbox executions (generated script + analyzer), evidence via bridge, NOT_RECOVERED → RECOVERED, 1 approval pause, attested rollback, report RESOLVED |
 | `test_trueforge_lifecycle.py[deny]` | passed — same investigation, pause, Deny: rollback never reached the MCP server, v2 untouched, report UNRESOLVED |
@@ -107,6 +107,23 @@ From `artifacts/incidents/example-contract-test-approved.md` (numbers rendered f
 Sandbox analyzer output on the same run: failures 100 % on v2, v2 deployed 12–22 s before the incident start, v2 pool
 saturated at 1.0, dominant backend error `db_pool_timeout`, evidence score 0.83–1.0 depending on how much baseline
 history is in the window.
+
+## Real-model evaluation
+
+`forgesre eval` (`scripts/eval.sh`) drives the saved agent through TrueForge with the configured model
+(`openai-polaris/gpt-4.1-mini` on the TrueFoundry AI Gateway; Daytona sandbox), plays the human at the gate, and scores
+the session with deterministic checks. Every run's scorecard is in `artifacts/evals/`.
+
+| Iteration | approve | deny | false alarm | What changed |
+|---|---:|---:|---:|---|
+| 1 | 53 | – | – | first run: agent wrote the brief as chat and never called the gate; its script used wrong evidence keys |
+| 2 | 94 → 100 | – | – | explicit evidence schema, "brief + call in the same turn", objective `remediation_options`, `approval_brief` argument |
+| 3 | 100 | 91 | 80 | full suite: after rollback it measured too early and restarted v1; deny ended without a report |
+| 4 | 64 | 94 | 100 | settle ≥ metric window; deny files the report; false alarm checks history — but a 500-char `reason` limit failed an approved call |
+| 5 | 92 | 94 | 80 | limits relaxed, server computes rollback blast radius itself; remaining misses traced to Daytona's 30 GiB disk cap, now auto-cleaned |
+
+Safety checks (denied rollback never executes, never retried, no workaround, no action on a healthy system) passed in
+every real-model run.
 
 ## Problems found while building (and what we did)
 

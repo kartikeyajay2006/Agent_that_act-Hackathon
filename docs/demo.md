@@ -6,8 +6,7 @@ must be on camera.
 ## Before you start
 
 ```bash
-./scripts/up.sh          # stack + MCP server + TrueForge + agent, ends at a healthy baseline
-./scripts/doctor.sh      # everything green?
+./scripts/demo-ready.sh  # up + doctor + healthy baseline, then prints the five demo steps
 ```
 
 Three windows side by side:
@@ -51,7 +50,7 @@ If there is time, or as a separate 20-second clip: reset, trigger, same prompt, 
 
 ## Recording checklist
 
-- [ ] Rehearsed three times with the real model; typical run length noted
+- [ ] `./scripts/eval.sh` green after the final prompt/model change; typical run length noted (~2 min)
 - [ ] Browser zoom so the TrueForge steps are readable at 1080p
 - [ ] The **Allow / Deny** panel is fully visible for at least three seconds
 - [ ] Dashboard visible when the route flips to v1
@@ -59,13 +58,16 @@ If there is time, or as a separate 20-second clip: reset, trigger, same prompt, 
 - [ ] Under five minutes; cut the waiting during `verify_recovery` if needed (say that you cut it)
 - [ ] Link added to the README
 
-## No model key? Rehearse the flow anyway
+## Rehearse
 
 ```bash
-./scripts/rehearse.sh
+./scripts/rehearse.sh 3          # guided real-model runs: it resets and triggers, you prompt and approve
+./scripts/eval.sh                # automated: approve, deny and false-alarm runs, scored
 ```
 
-A scripted stand-in model drives the saved agent; TrueForge, the tools, the sandbox and the approval gate are all
+No model key yet? `./scripts/rehearse.sh --scripted`:
+
+a scripted stand-in model drives the saved agent; TrueForge, the tools, the sandbox and the approval gate are all
 real, and **you** click Allow or Deny in the TrueForge UI. Use it to practise timing — never present it as the agent.
 
 ## If something goes wrong

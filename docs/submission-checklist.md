@@ -6,8 +6,8 @@ observable from this repository and demo.
 ## Technical proof
 
 - [ ] Run `./scripts/demo-ready.sh`; it ends with `all checks passed`.
-- [ ] Run `./scripts/eval.sh --scenario approve --runs 2` after the final prompt/model change. Keep the generated
-  scorecards locally as recording evidence; do not commit run artifacts containing local session data.
+- [ ] Run `./scripts/eval.sh` (approve, deny, false alarm) after the final prompt/model change. The scorecards in
+  `artifacts/evals/` hold scores, tool sequences and local session ids — no keys — and are committed as evidence.
 - [ ] In one recorded run, expand a TrueForge `exec` step to show agent-generated Python and its JSON output.
 - [ ] In the same run, keep the TrueForge `rollback_deployment` approval panel visible for at least three seconds.
 - [ ] Show the completed `approval_brief` argument in that panel: it contains hypothesis, evidence, failed restart,

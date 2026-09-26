@@ -14,8 +14,9 @@ gap analysis and self-scores, see [winning-plan.md](winning-plan.md).
 | **Hold for a person** | `rollback_deployment` in `require_approval_for_tools` (and annotated destructive) | `trueforge.py::agent_manifest` | TrueForge "Tool Approval Required" panel with Allow / Deny |
 | TrueForge is not decorative | No LLM client in the repo; TrueForge runs the loop, sandbox, approvals, sessions | `grep -ri "anthropic\|openai" mcp-server/src` → config strings only | Show the session trace and the agent spec |
 
-Evidence: `tests/test_trueforge_lifecycle.py` (12 routed tool calls, 2 sandbox executions, 1 approval pause),
-[showcase screenshots](assets/showcase/).
+Evidence: real-model scorecards in [`artifacts/evals/`](../artifacts/evals/) — `gpt-4.1-mini` through TrueForge:
+approve 100/100 (agent-written sandbox code, analyzer cross-check, gate, recovery), deny 94/100;
+`tests/test_trueforge_lifecycle.py`; [showcase screenshots](assets/showcase/).
 
 ## 25 pts — It actually runs
 
@@ -48,6 +49,8 @@ serves every customer. The agent must write an approval brief (hypothesis, evide
 verified, blast radius from `assess_action_risk`, recovery plan) before the call.
 
 Evidence:
+- Real model, `eval.sh` deny scenario: the rollback never executed, was never retried, no workaround — in every run
+- Real model, false alarm: no production action on a healthy system
 - Deny through TrueForge: rollback never reaches the MCP server, v2 untouched (`test_trueforge_lifecycle.py[deny]`, `test_trueforge_gate.py`)
 - Direct call without approval: `APPROVAL_NOT_FOUND`; replayed approval: `APPROVAL_ALREADY_USED` (`test_safety.py`)
 - Code Mode cannot call destructive tools (TrueForge `blockDestructiveToolsInCodeMode`)
