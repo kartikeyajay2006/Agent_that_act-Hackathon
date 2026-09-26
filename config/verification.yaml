@@ -1,0 +1,27 @@
+# Objective recovery criteria. verify_recovery passes only when ALL hold.
+recovery:
+  settle_seconds: 30            # wait after an action so rate windows only see post-action traffic
+  max_settle_seconds: 90
+  metric_window: 30s            # PromQL rate window used for post-action measurements
+  synthetic_requests: 20
+  thresholds:
+    synthetic_success_ratio_min: 0.95
+    checkout_error_rate_max: 0.05
+    checkout_latency_p95_seconds_max: 1.0
+    db_connection_utilization_max: 0.70
+    active_version_ready: true
+
+synthetic:
+  max_requests: 50
+  timeout_seconds: 5
+
+evidence:
+  default_window_minutes: 15
+  max_window_minutes: 60
+  step_seconds: 10
+
+logs:
+  max_limit: 200
+  default_limit: 50
+  max_since_minutes: 60
+  max_message_chars: 600

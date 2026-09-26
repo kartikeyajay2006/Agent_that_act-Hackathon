@@ -1,0 +1,48 @@
+# Server-side action policy. This is defense in depth: the approval pause for
+# RED actions is enforced by TrueForge (require_approval_for_tools in the agent
+# spec), and these rules are enforced again inside the MCP server regardless
+# of what the model asks for.
+
+environment: demo-production
+
+classes:
+  green: Read-only observation. Runs autonomously.
+  yellow: Safe, reversible operation. Runs autonomously when policy allows.
+  red: High-impact production change. Must pass the TrueForge approval gate.
+
+actions:
+  list_services:            { class: green }
+  get_incident_context:     { class: green }
+  get_service_health:       { class: green }
+  get_service_logs:         { class: green }
+  query_metrics:            { class: green }
+  get_database_health:      { class: green }
+  get_recent_deployments:   { class: green }
+  get_active_deployment:    { class: green }
+  collect_incident_evidence: { class: green }
+  assess_action_risk:       { class: green }
+  run_synthetic_check:      { class: green }
+  verify_recovery:          { class: green }
+  get_incident_timeline:    { class: green }
+  generate_incident_report: { class: green }
+
+  restart_service:
+    class: yellow
+    autonomous: true
+    # Stateful or shared infrastructure is never restarted by the agent.
+    allowed_targets: [api-gateway, payment-service-v1, payment-service-v2, traffic-generator]
+    max_per_target_per_window: 2
+    window_minutes: 10
+    readiness_timeout_seconds: 30
+    estimated_disruption_seconds: 8
+
+  rollback_deployment:
+    class: red
+    approval_required: true
+    allowed_services: [payment-service]
+    require_active_incident: true
+    # Before executing, the MCP server looks up the human "allow" decision for this exact
+    # call in TrueForge's session events (and refuses to reuse one approval twice).
+    require_trueforge_attestation: true
+    target_readiness_timeout_seconds: 45
+    drain_seconds: 2
