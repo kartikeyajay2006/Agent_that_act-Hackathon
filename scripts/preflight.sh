@@ -24,12 +24,15 @@ case "${MODEL_API_KEY}" in
 esac
 
 case "$(uname -s)" in
-  Linux*) ;;
-  *) [[ -n "${DAYTONA_API_KEY:-}" ]] || die "non-Linux hosts need a Daytona key for the TrueForge sandbox" ;;
+  Linux*|Darwin*) ;;  # TrueForge ships a local sandbox for Linux (bubblewrap) and macOS (Seatbelt)
+  *) [[ -n "${DAYTONA_API_KEY:-}" ]] || die "this OS has no TrueForge local sandbox; set DAYTONA_API_KEY (or use WSL2)" ;;
 esac
 
-curl -fs "http://${FORGESRE_MCP_HOST:-127.0.0.1}:${FORGESRE_MCP_PORT:-18900}/healthz" >/dev/null \
-  || die "ForgeSRE MCP server is not running; run ./scripts/start-demo.sh"
+if curl -fs "http://${FORGESRE_MCP_HOST:-127.0.0.1}:${FORGESRE_MCP_PORT:-18900}/healthz" >/dev/null 2>&1; then
+  ok "ForgeSRE MCP server is running"
+else
+  warn "ForgeSRE MCP server is not running yet; ./scripts/up.sh (or start-demo.sh) starts it"
+fi
 
 if curl -fs "${TRUEFORGE_URL:-http://localhost:8790}/api/v1/capabilities" >/dev/null 2>&1; then
   ok "TrueForge is reachable at ${TRUEFORGE_URL:-http://localhost:8790}"

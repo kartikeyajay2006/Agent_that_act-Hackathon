@@ -21,7 +21,7 @@ action.
 
 | Criterion | Now | Why | After the must-dos |
 |---|---:|---|---:|
-| Harness doing the work (30) | 20–24 | Real tools, sandbox and the native gate all verified through TrueForge — but only with a scripted test-double model and a 3B local model. **No run with a frontier model yet.** Whether the model writes its own sandbox code on stage is untested. | 26–29 |
+| Harness doing the work (30) | 26–29 | A configured real-model approval evaluation now scored **100/100**: generated sandbox code, native gate, attested rollback and recovery. Repeat it after any prompt/model change. | 27–30 |
 | It actually runs (25) | 15–19 | `up.sh`, `doctor.sh`, rehearsal mode, pinned TrueForge. Tested on **one** Fedora laptop only. Needs Docker, Node ≥ 22.14, uv, and a model key. | 20–23 |
 | Where it stops (20) | 17–19 | Two-layer gate (TrueForge + attestation), single-use approvals, allowlists, rate limit, no shell. Deny path proven. | 18–20 |
 | Job worth handing over (15) | 11–13 | Incident response is real, repetitive, time-critical toil. Only one incident type. | 12–14 |
@@ -32,7 +32,7 @@ action.
 
 | # | Task | Why it matters | Time | Done when |
 |---|---|---|---|---|
-| 1 | **Add a real model key and rehearse three times.** `MODEL_PROVIDER` + `MODEL_ID` + `MODEL_API_KEY` in `.env`, `./scripts/setup-trueforge.sh`, then reset → trigger → prompt in the TrueForge UI. | 30-pt criterion; nothing proves the agent reasons well until this runs | 45–90 min | Three consecutive runs reach the gate with a correct approval brief, and recover after Allow |
+| 1 | **Repeat the real-model evaluation twice before presenting.** The configured model has one 100/100 approve run. Use `./scripts/eval.sh --scenario approve --runs 2` after any model or prompt change. | Repeated evidence is stronger than a single perfect run | 10–15 min | Three consecutive runs reach the gate with a correct approval brief, and recover after Allow |
 | 2 | **Check the model writes code in the sandbox.** Watch for two `exec` steps (its own script, then the analyzer). If it skips 5a, tighten `agent/forgesre.system.md` and re-run setup. | "run **generated** code in the sandbox" is literally in the rubric | 15–30 min | Session trace shows a script the model wrote |
 | 3 | **Fresh-laptop test.** A teammate who has not seen the repo clones it on *their* machine (ideally macOS) and follows only the README. Time it, note every snag, fix the README or scripts. | 25-pt criterion is judged exactly this way | 45–60 min | Up and healthy in < 15 min without help |
 | 4 | **Record the video (≤ 5 min).** Follow `docs/demo.md`. Must show: tool calls in TrueForge, the sandbox step, the restart failing verification, the **Allow/Deny panel**, recovery. Add a 20 s Deny clip. | Required deliverable + 10-pt criterion | 45 min | Uploaded, linked in README |

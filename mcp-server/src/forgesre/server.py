@@ -292,13 +292,34 @@ async def rollback_deployment(
     from_version: Annotated[str, Field(pattern=r"^v[0-9]{1,3}$", description="Currently active version")],
     to_version: Annotated[str, Field(pattern=r"^v[0-9]{1,3}$", description="Known-good version to restore")],
     reason: Annotated[str, Field(min_length=20, max_length=500, description="Evidence-backed justification")],
+    approval_brief: Annotated[
+        str,
+        Field(
+            min_length=80,
+            max_length=3000,
+            description=(
+                "Completed human-facing rollback brief: hypothesis, numeric evidence, failed safe action, "
+                "blast radius, target readiness and recovery plan. This is displayed in TrueForge before approval."
+            ),
+        ),
+    ],
 ) -> dict[str, Any]:
     """RED action — production rollback, requires human approval in TrueForge. Validates the request
     (from_version must be active, target must exist and become ready, an incident must be open), starts
     the target if needed, atomically switches gateway traffic, confirms the gateway observes the switch,
     then stops the previous version to release its resources. Returns ALREADY_AT_TARGET if nothing to do."""
-    args = {"service": service, "from_version": from_version, "to_version": to_version, "reason": reason}
-    return await _call("rollback_deployment", lambda: ops.rollback(service, from_version, to_version, reason), args)
+    args = {
+        "service": service,
+        "from_version": from_version,
+        "to_version": to_version,
+        "reason": reason,
+        "approval_brief": approval_brief,
+    }
+    return await _call(
+        "rollback_deployment",
+        lambda: ops.rollback(service, from_version, to_version, reason, approval_brief),
+        args,
+    )
 
 
 # --------------------------------------------------------------------------- report

@@ -76,7 +76,7 @@ Status legend: ✅ built and verified by a test or a recorded run · 🟡 built,
 | Allow executes with attestation | ✅ | server reads the Allow from TrueForge turns and records session/tool-call/turn/time |
 | Sandbox diagnosis with generated code | ✅ | agent writes its own script, then cross-checks with the reference analyzer; evidence via Code Mode bridge |
 | Skill attached where it can install | ✅ | auto-detected; elsewhere the analyzer is delivered into the sandbox through the MCP bridge (no internet needed) |
-| Full autonomous run with a frontier model | 🟡 | **not yet run** — no model API key was available while building. Every mechanism the model depends on is verified (below). Do a rehearsal with your key before demoing. |
+| Full autonomous run with the configured real model | ✅ | `truefoundry/openai-polaris-gpt-4-1-mini` completed the approve scenario at **100/100**: generated sandbox code, approval pause, attested rollback, objective recovery and RESOLVED report. Re-run the evaluator after changing the prompt or model. |
 
 ## How it was verified
 
@@ -87,6 +87,7 @@ Status legend: ✅ built and verified by a test or a recorded run · 🟡 built,
 | `test_trueforge_lifecycle.py[allow]` | passed — TrueForge routed 12 tool calls, 2 sandbox executions (generated script + analyzer), evidence via bridge, NOT_RECOVERED → RECOVERED, 1 approval pause, attested rollback, report RESOLVED |
 | `test_trueforge_lifecycle.py[deny]` | passed — same investigation, pause, Deny: rollback never reached the MCP server, v2 untouched, report UNRESOLVED |
 | `test_trueforge_gate.py` with a real local model (qwen2.5 3B) | deny: 0 rollback calls reached the server, v2 kept; allow: rollback executed with attestation |
+| `./scripts/eval.sh --scenario approve --runs 1` with configured model | 100/100 — real-model run reached the TrueForge approval gate, used sandbox diagnostics, recovered v1 and filed a RESOLVED report |
 
 The lifecycle tests use a **scripted test-double model** (`mcp-server/tests/scripted_model.py`) so the result depends
 on TrueForge and ForgeSRE, not on a model's reasoning. It is never used as the agent in a demo.

@@ -11,6 +11,9 @@
 Also:
 
 - [Demo runbook](demo.md) — the five-minute run of show, lines to say, and a recording checklist
+- [Three-minute video script](video-script.md) — exact shots, on-screen actions and narration for the submission video
+- [Public build-story draft](build-story.md) — ready-to-personalise LinkedIn/X copy for the community prize
+- [Submission checklist](submission-checklist.md) — final technical, recording and public-submission checks
 - [TrueForge setup](../agent/setup.md) — what `setup-trueforge.sh` configures, and how to do it by hand
 - [Agent instructions](../agent/forgesre.system.md) — the prompt TrueForge runs
 - [Showcase images](assets/showcase/) — captured from a live run by `scripts/dev/capture_showcase.py`

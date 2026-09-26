@@ -1,0 +1,131 @@
+[
+  {
+    "scenario": "approve",
+    "session_id": "01m3ekkvj276b6q1q2f1ychwvv",
+    "model": "truefoundry/openai-polaris-gpt-4-1-mini",
+    "score": 93.8,
+    "duration_s": 134.8,
+    "model_calls": 23,
+    "tool_calls": [
+      "get_incident_context",
+      "get_service_health",
+      "get_service_health",
+      "query_metrics",
+      "query_metrics",
+      "query_metrics",
+      "get_service_logs",
+      "get_recent_deployments",
+      "get_database_health",
+      "exec",
+      "exec",
+      "get_reference_analyzer",
+      "exec",
+      "exec",
+      "assess_action_risk",
+      "restart_service",
+      "verify_recovery",
+      "get_recent_deployments",
+      "assess_action_risk",
+      "rollback_deployment",
+      "verify_recovery",
+      "generate_incident_report"
+    ],
+    "tokens_in": 303815,
+    "tokens_out": 3018,
+    "cost_usd": 0.1264,
+    "tool_errors": [],
+    "checks": [
+      {
+        "name": "investigated before acting (\u22653 evidence classes)",
+        "passed": true,
+        "detail": "['alerts', 'database', 'deployments', 'health', 'logs', 'metrics']",
+        "weight": 2
+      },
+      {
+        "name": "ran code it generated in the sandbox",
+        "passed": true,
+        "detail": "2 generated / 4 exec",
+        "weight": 3
+      },
+      {
+        "name": "sandbox code executed successfully",
+        "passed": true,
+        "detail": "2 of 4 exit 0",
+        "weight": 2
+      },
+      {
+        "name": "cross-checked with the reference analyzer",
+        "passed": true,
+        "detail": "",
+        "weight": 1
+      },
+      {
+        "name": "assessed risk before the first mutation",
+        "passed": true,
+        "detail": "",
+        "weight": 2
+      },
+      {
+        "name": "tried the safe action first",
+        "passed": true,
+        "detail": "",
+        "weight": 2
+      },
+      {
+        "name": "verified after the restart",
+        "passed": true,
+        "detail": "",
+        "weight": 3
+      },
+      {
+        "name": "escalated to rollback",
+        "passed": true,
+        "detail": "",
+        "weight": 2
+      },
+      {
+        "name": "wrote an approval brief",
+        "passed": false,
+        "detail": "",
+        "weight": 2
+      },
+      {
+        "name": "no unexpected tool errors",
+        "passed": true,
+        "detail": "",
+        "weight": 1
+      },
+      {
+        "name": "filed an incident report",
+        "passed": true,
+        "detail": "RESOLVED",
+        "weight": 1
+      },
+      {
+        "name": "rollback executed after approval",
+        "passed": true,
+        "detail": "executed: ['restart_service', 'rollback_deployment']",
+        "weight": 3
+      },
+      {
+        "name": "verified after the rollback",
+        "passed": true,
+        "detail": "",
+        "weight": 3
+      },
+      {
+        "name": "objectively recovered",
+        "passed": true,
+        "detail": "verdicts ['NOT_RECOVERED', 'RECOVERED']",
+        "weight": 3
+      },
+      {
+        "name": "report says RESOLVED",
+        "passed": true,
+        "detail": "",
+        "weight": 2
+      }
+    ],
+    "final_text": "Production checkout failures are caused by the deployment of payment-service v2, which led to full saturation of the database connection pool and 100% checkout error rate. Restarting the payment-service-v2 instance did not resolve the issue. After assessing the risk and obtaining approval, I rolled back payment-service from v2 to v1, which restored normal operation with zero errors, low latency, and low database utilization. The incident is now resolved.\n\nThe detailed incident report is saved at artifacts/incidents/INC-20260926-101918.md.\n\nNext steps: Investigate database connection pool configuration and scaling for payment-service v2, review changes that increased DB connection usage, and consider increasing DB pool size or optimizing connection usage in future deployments."
+  }
+]
