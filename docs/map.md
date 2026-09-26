@@ -50,7 +50,8 @@ Every file, what it does, and where to look when you want to change something. ~
 │   │   ├── trueforge.py          TrueForge API: setup (model, connector, skill, agent) + approval attestation
 │   │   ├── dashboard.py/.html    mission control (read-only) at /dashboard
 │   │   ├── agent_driver.py       terminal driver for a TrueForge session (official trueforge-sdk)
-│   │   ├── cli.py                `forgesre` CLI: init-state, deploy, reset, status, check, trueforge-setup, agent-run
+│   │   ├── evaluate.py           agent evaluation: scenarios through TrueForge, deterministic scoring, scorecards
+│   │   ├── cli.py                `forgesre` CLI: init-state, deploy, reset, status, check, trueforge-setup, agent-run, eval
 │   │   ├── config.py             loads config/*.yaml + .env, validates at startup
 │   │   └── results.py            success / failure / partial envelope with error codes
 │   └── tests/
@@ -78,12 +79,16 @@ Every file, what it does, and where to look when you want to change something. ~
 │   ├── trigger-incident.sh       release pipeline ships payment-service v2
 │   ├── verify-healthy.sh / verify-incident.sh
 │   ├── run-agent.sh              drive the agent from a terminal (asks you to Allow/Deny)
-│   ├── rehearse.sh               keyless rehearsal: scripted stand-in model, you click Allow/Deny in TrueForge
+│   ├── rehearse.sh               `N`: guided real-model rehearsals · `--scripted`: keyless run, you click Allow/Deny
+│   ├── eval.sh                   score the agent: approve, deny and false-alarm scenarios (artifacts/evals/)
+│   ├── preflight.sh              prerequisites + model configuration check, before anything starts
+│   ├── demo-ready.sh             up + doctor + healthy baseline, then prints the demo steps
 │   ├── lib.sh                    shared helpers (.env loading, MCP start/stop)
 │   └── dev/                      snap.mjs (CDP screenshots), capture_showcase.py, rehearse.py
 │
 ├── docs/                         see docs/README.md
 ├── artifacts/incidents/          generated reports (+ committed examples)
+├── artifacts/evals/              evaluation scorecards (JSON + Markdown)
 └── state/                        runtime state (git-ignored)
 ```
 
@@ -101,6 +106,8 @@ Every file, what it does, and where to look when you want to change something. ~
 | add a service | `docker-compose.yml` + `config/services.yaml` (+ `demo/prometheus/prometheus.yml`) |
 | see what happened in a run | TrueForge session; `artifacts/audit/events.jsonl`; `artifacts/incidents/` |
 | regenerate README images | `uv run --project mcp-server python scripts/dev/capture_showcase.py --clean-sessions` |
+| check the agent still behaves after a change | `./scripts/eval.sh` (approve, deny, false alarm) |
+| switch the model | `.env` → `MODEL_*`, then `./scripts/setup-trueforge.sh`; or pick the fallback in the TrueForge UI |
 
 ## One rollback call, file by file
 

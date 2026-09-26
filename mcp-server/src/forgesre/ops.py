@@ -674,6 +674,10 @@ class Ops:
         settle = int(
             clamp(settle_seconds if settle_seconds is not None else rc["settle_seconds"], 0, rc["max_settle_seconds"])
         )
+        # Never measure before the rate window has rolled past the action: a shorter settle would count
+        # pre-action failures and report NOT_RECOVERED for a fix that worked.
+        window_s = int(str(rc["metric_window"]).rstrip("sm")) * (60 if str(rc["metric_window"]).endswith("m") else 1)
+        settle = max(settle, window_s)
         last_action = next(
             (e for e in reversed(self.audit.events(types={"action_completed"}))),
             None,
@@ -755,6 +759,16 @@ class Ops:
             if current and inc.get("opened_at"):
                 opened = datetime.fromisoformat(inc["opened_at"]).timestamp()
                 since = round(opened - datetime.fromisoformat(current["deployed_at"]).timestamp(), 1)
+            # Compute the blast radius here too, so the approval brief always has real numbers.
+            try:
+                risk = self.assess_risk("rollback_deployment", VERSIONED, previous)
+            except ToolError as exc:
+                risk = {"error_code": exc.code, "message": exc.message}
+            keep = (
+                "risk_level", "approval_required", "blockers", "active_requests_per_minute",
+                "current_checkout_error_rate", "dependents", "expected_disruption_seconds",
+                "expected_failed_requests", "db_connections_released", "recovery_strategy", "error_code",
+            )  # fmt: skip
             options.append(
                 {
                     "action": "rollback_deployment",
@@ -766,6 +780,7 @@ class Ops:
                     "deployed_seconds_before_incident_opened": since,
                     "target_running": bool(state.get("running")),
                     "target_ready": ready,
+                    "risk_assessment": {k: risk[k] for k in keep if k in risk},
                 }
             )
         return options

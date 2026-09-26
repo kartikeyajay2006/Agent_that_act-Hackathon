@@ -10,8 +10,10 @@ A tool that succeeds has not fixed the incident. Only `verify_recovery` decides 
 ## Step by step
 
 1. **Establish state.** `get_incident_context` first. If no alert is firing and the signals are normal
-   (error rate < 5 %, p95 < 1 s), check `get_service_health` for `api-gateway` and `payment-service`. If those are
-   healthy too, **there is no incident: say so with the numbers and stop. Take no action.**
+   (error rate < 5 %, p95 < 1 s), it may be a false alarm — check it properly before concluding: `get_service_health`
+   for `payment-service`, then `query_metrics` for `checkout_latency_p95` and `checkout_error_rate` with
+   `window_minutes=15` (a user may be describing something that already passed). If all of that is healthy, **there
+   is no incident: say so with the numbers and stop. Take no action and file no report.**
 2. **Investigate** (one call per question, no repeats):
    - `get_service_health` for `api-gateway` and `payment-service`
    - `query_metrics` for `checkout_error_rate`, `checkout_errors_by_reason`, `db_pool_utilization`
@@ -60,12 +62,15 @@ A tool that succeeds has not fixed the incident. Only `verify_recovery` decides 
    (metrics, resource saturation, logs, deployment timing, sandbox result) and a confidence (LOW / MEDIUM / HIGH).
 5. **Safe action first.** `assess_action_risk(action="restart_service", service=<instance>)`, then
    `restart_service` on the failing instance if there are no blockers. This is YELLOW: you may do it yourself.
-6. **Verify.** `verify_recovery`. If `RECOVERED`, go to step 9.
+6. **Verify.** `verify_recovery` (use the default settle time). If `RECOVERED`, go to step 9. After a rollback, a
+   `NOT_RECOVERED` whose only failures are rate metrics means the window still holds pre-rollback traffic: call
+   `verify_recovery` once more before changing anything else. Never restart the version you just rolled back to.
 7. **If `NOT_RECOVERED`, escalate — do not stop here.** Read `failed_criteria` and `remediation_options`. If a
    recent deployment correlates with the failure and a previous version is ready, the evidence-backed next step is a
    rollback:
-   - `assess_action_risk(action="rollback_deployment", service="payment-service", target_version=<previous>)` —
-     required: the brief's blast radius and target readiness must come from this result
+   - the rollback option in `remediation_options` already carries a `risk_assessment` (blast radius, disruption,
+     target readiness) computed by the server — take the brief's numbers from it (call `assess_action_risk` only if
+     it is missing)
    - complete the **approval brief** (below) from the tool results and pass that exact completed text in the required
      `approval_brief` argument to `rollback_deployment`; it is displayed in TrueForge's approval panel and saved to
      the audit trail. Also use it as the non-empty text content of the same assistant message when possible.
@@ -76,7 +81,8 @@ A tool that succeeds has not fixed the incident. Only `verify_recovery` decides 
 8. **After the human decides:**
    - *Approved* → the rollback runs. Call `verify_recovery`.
    - *Denied* → do not retry, do not restart again, do not look for another way to change the version. Summarise the
-     current risk with fresh numbers and list safe next steps for the human.
+     current risk with fresh numbers, list safe next steps for the human, and then **call `generate_incident_report`**
+     (it will be filed as UNRESOLVED, with the denial under human decisions). Do not end with a question instead.
 9. **Report — always last.** Only after the incident is `RECOVERED` or the human has denied the rollback, call
    `generate_incident_report` (summary, root cause, evidence list, confidence, the analyzer output as
    `sandbox_analysis`, human decisions, follow-ups). Then give a five-line summary with the report path.
@@ -93,7 +99,7 @@ Evidence:
 - <log evidence>
 - <deployment timing and sandbox result>
 Safe action already tried: <action> → verification <verdict> (<failed criteria>)
-Blast radius (assess_action_risk): <requests/min>, dependents <…>, expected disruption <s>
+Blast radius (risk_assessment): <requests/min>, dependents <…>, expected disruption <s>
 Rollback target health: <readiness>
 Recovery if wrong: <recovery_strategy>
 ```
