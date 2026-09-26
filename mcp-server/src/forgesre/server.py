@@ -8,6 +8,7 @@ named explicitly in the agent's require_approval_for_tools.
 from __future__ import annotations
 
 import hmac
+import json
 import os
 import time
 from collections.abc import Callable
@@ -75,6 +76,23 @@ async def _acall(tool: str, coro_fn: Callable[[], Any], args: dict[str, Any]) ->
         return from_error(exc)
     ops.audit.record("tool_call", tool, result.get("status", "success"), {"args": args, "ms": _ms(started)})
     return result
+
+
+def _as_text(value: Any, limit: int = 6000) -> str | None:
+    """Sandbox output arrives as text or (after the SDK pre-parses JSON-looking strings) as an object,
+    sometimes still wrapped in the exec envelope. Normalise to readable text."""
+    if value is None:
+        return None
+    if isinstance(value, dict) and isinstance((value.get("response") or {}).get("result"), str):
+        value = value["response"]["result"]
+    if isinstance(value, str):
+        kept = [ln for ln in value.splitlines() if not ln.startswith("<frozen site>")]
+        value = "\n".join(kept).strip()
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return value[:limit]
+    return ("```json\n" + json.dumps(value, indent=2, default=str) + "\n```")[:limit]
 
 
 def _ms(started: float) -> int:
@@ -267,7 +285,10 @@ async def generate_incident_report(
     root_cause: Annotated[str, Field(min_length=20, max_length=2000, description="Hypothesis + mechanism")],
     evidence: Annotated[list[str], Field(min_length=1, max_length=12, description="Evidence items, one per line")],
     confidence: Literal["LOW", "MEDIUM", "HIGH"],
-    sandbox_analysis: Annotated[str | None, Field(max_length=3000, description="Sandbox diagnostic output")] = None,
+    sandbox_analysis: Annotated[
+        str | dict[str, Any] | list[Any] | None,
+        Field(description="Sandbox diagnostic output (text or the analyzer's JSON object)"),
+    ] = None,
     human_decisions: Annotated[list[str], Field(max_length=10)] = [],  # noqa: B006
     follow_ups: Annotated[list[str], Field(max_length=10)] = [],  # noqa: B006
 ) -> dict[str, Any]:
@@ -284,7 +305,7 @@ async def generate_incident_report(
                 root_cause=root_cause,
                 evidence=evidence,
                 confidence=confidence,
-                sandbox_analysis=sandbox_analysis,
+                sandbox_analysis=_as_text(sandbox_analysis),
                 human_decisions=human_decisions,
                 follow_ups=follow_ups,
             )

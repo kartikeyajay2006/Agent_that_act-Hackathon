@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -159,6 +160,22 @@ def cmd_check(ops: Ops, expect: str, timeout: int) -> int:
         time.sleep(5)
 
 
+def _skill_can_install(env) -> bool:
+    """Git-backed skills are cloned inside the sandbox. TrueForge's Linux local sandbox can only read
+    /usr/lib*, /usr/local, /usr/bin…, so git's https helper must live there (Debian yes, Fedora no)."""
+    mode = env.get("FORGESRE_ATTACH_SKILL", "auto")
+    if mode in ("always", "never"):
+        return mode == "always"
+    if env.get("DAYTONA_API_KEY"):
+        return True
+    try:
+        exec_path = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return False
+    readable = ("/usr/lib/", "/usr/lib64/", "/usr/local/", "/usr/bin", "/bin", "/lib/", "/lib64/")
+    return exec_path.startswith(readable)
+
+
 def cmd_trueforge_setup(ops: Ops) -> int:
     tf = from_env()
     env = os.environ
@@ -194,19 +211,33 @@ def cmd_trueforge_setup(ops: Ops) -> int:
     else:
         print("sandbox provider: TrueForge local sandbox (standalone mode)")
 
-    with_skill = False
     repo = env.get("FORGESRE_SKILL_REPO", "https://github.com/kartikeyajay2006/Agent_that_act-Hackathon")
-    if repo:
+    ref = env.get("FORGESRE_SKILL_REF", "main")
+    with_skill = _skill_can_install(env)
+    if with_skill:
         try:
-            tf.configure_skill(
-                repo_url=repo, ref=env.get("FORGESRE_SKILL_REF", "main"), path="skills/incident-diagnostics"
-            )
-            with_skill = True
-            print(f"skill '{SKILL_NAME}' registered from {repo}")
+            tf.configure_skill(repo_url=repo, ref=ref, path="skills/incident-diagnostics")
+            print(f"skill '{SKILL_NAME}' registered from {repo} and attached")
         except TrueForgeError as exc:
-            print(f"WARNING: skill not registered ({exc}); the agent will write its own diagnostic script")
-
-    instructions = (ops.settings.root / "agent" / "forgesre.system.md").read_text()
+            with_skill = False
+            print(f"WARNING: skill not registered ({exc})")
+    if with_skill:
+        source = (
+            "Load the attached `incident-diagnostics` skill and run its analyzer: "
+            "`python <skills dir>/incident-diagnostics/scripts/diagnose.py --window 15` (skills directory from your "
+            "sandbox instructions)."
+        )
+    else:
+        raw = repo.replace("https://github.com/", "https://raw.githubusercontent.com/").rstrip("/")
+        url = f"{raw}/{ref}/skills/incident-diagnostics/scripts/diagnose.py"
+        source = (
+            f"Fetch the reference analyzer into the sandbox and run it: "
+            f"`curl -fsSL {url} -o diagnose.py && python diagnose.py --window 15`."
+        )
+        print("skill not attached (sandbox cannot clone git skills here); agent fetches the analyzer over HTTPS")
+    instructions = (
+        (ops.settings.root / "agent" / "forgesre.system.md").read_text().replace("{{DIAGNOSTICS_SOURCE}}", source)
+    )
     agent = tf.upsert_agent(tf.agent_manifest(model_fqn=fqn, instructions=instructions, with_skill=with_skill))
     print(f"agent '{AGENT_NAME}' saved (id {agent.get('id')}); approval required for {APPROVAL_GATED_TOOLS}")
     print(f"open {tf.base_url} -> Agents -> {AGENT_NAME} -> Try")

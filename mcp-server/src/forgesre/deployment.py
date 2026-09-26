@@ -23,7 +23,7 @@ STATE_FILE = "deployment.json"
 
 
 def now_iso() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
 class DeploymentStore:

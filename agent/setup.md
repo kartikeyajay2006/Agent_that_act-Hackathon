@@ -42,6 +42,10 @@ read-only.
 
 ## 4. Skill
 
+Attached automatically when the sandbox can clone it (Daytona, or a local host whose git helpers live under
+`/usr/lib*`). On Fedora/RHEL the local sandbox cannot run git's HTTPS helper, so setup leaves the skill detached and the
+agent instructions fetch the same analyzer with `curl` instead. Force either way with `FORGESRE_ATTACH_SKILL`.
+
 **Settings → Skills → Import from GitHub**
 
 | Field | Value |
@@ -60,7 +64,7 @@ read-only.
   "name": "forgesre",
   "manifest": {
     "model": { "name": "<provider>/<model>", "params": { "temperature": 0.1 } },
-    "instructions": "<contents of agent/forgesre.system.md>",
+    "instructions": "<agent/forgesre.system.md with {{DIAGNOSTICS_SOURCE}} filled in by setup>",
     "mcp_servers": [{
       "name": "forgesre",
       "enable_tools": ["@all"],
@@ -78,6 +82,9 @@ read-only.
   }
 }
 ```
+
+If you paste the instructions into the UI by hand, replace `{{DIAGNOSTICS_SOURCE}}` with how to run the analyzer
+(skill path, or the `curl … diagnose.py` line setup prints).
 
 In the UI: **Select MCP Tools → forgesre**, make sure the shield (approval) is on for `rollback_deployment` and off for
 `restart_service`; **Runtime Config → Sandbox** on.

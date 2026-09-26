@@ -77,9 +77,10 @@ def test_sandbox_diagnosis_uses_bridged_evidence():
     sid = client.sessions.create(agent={"spec": spec}).data.id
     started = datetime.now(UTC).isoformat()
     skills_dir = "/opt/tfy/skills" if _daytona_configured() else "skills"
+    args = {"intent": "Run the incident diagnostics analyzer", "command": COMMAND.format(skills=skills_dir)}
     prompt = (
-        "Use the exec tool to run this exact shell command in the sandbox, then show its JSON output:\n"
-        + COMMAND.format(skills=skills_dir)
+        "Call the exec tool exactly once with exactly these arguments, then reply with its JSON output:\n"
+        + json.dumps(args)
     )
 
     events: dict = {}

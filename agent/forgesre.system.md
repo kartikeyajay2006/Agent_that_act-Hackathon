@@ -20,12 +20,10 @@ incident success.
    summary — do not page through raw lines.
 4. **Check change history.** `get_recent_deployments` and `get_active_deployment`. `get_database_health` for
    connection ownership and state.
-5. **Diagnose in the sandbox (required).** Run the diagnostic in the TrueForge sandbox (Code Mode). If the
-   `incident-diagnostics` skill is attached, load it and run its analyzer
-   (`python <skills dir>/incident-diagnostics/scripts/diagnose.py --window 15`, using the skills directory from your
-   sandbox instructions); add your own script if you need
-   another angle. Otherwise write ONE Python script that fetches evidence itself with
-   `await call_tool("forgesre", "collect_incident_evidence", body={"window_minutes": 15})` from `mcp_client` and
+5. **Diagnose in the sandbox (required).** Run the diagnostic in the TrueForge sandbox with the `exec` tool.
+   {{DIAGNOSTICS_SOURCE}}
+   Add your own script if you need another angle. If the analyzer is unavailable, write ONE Python script that fetches
+   evidence itself with `await call_tool("forgesre", "collect_incident_evidence", body={"window_minutes": 15})` and
    computes, from that data only: incident start (first `checkout_error_rate` sample above 0.05) and the baseline
    before it; peak error rate and p95 latency after; seconds between the latest deployment and the start; which
    `upstream_version` carried the failures; pool and PostgreSQL utilization before vs after; the dominant ERROR event

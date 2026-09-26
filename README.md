@@ -253,8 +253,21 @@ Watch **mission control** at http://127.0.0.1:18900/dashboard.
 cd mcp-server
 uv run pytest                                   # 63 unit + safety tests (33 + 30), no infrastructure
 uv run pytest -m integration                    # 12 tests against the live stack (~4 min)
-uv run pytest -m trueforge -s                   # approval gate + sandbox through a real TrueForge session
+uv run pytest -m trueforge -s tests/test_trueforge_lifecycle.py   # full lifecycle through TrueForge, allow + deny
+uv run pytest -m trueforge -s tests/test_trueforge_gate.py        # approval gate with the configured real model
 ```
+
+`test_trueforge_lifecycle.py` runs the saved `forgesre` agent spec inside TrueForge with the model swapped for a
+**scripted test double** (`tests/scripted_model.py`), so it checks the integration — tool routing, sandbox, Code Mode
+bridge, approval pause, attestation, real side effects, report — independently of model quality. Recorded results:
+
+| Branch | Tool calls routed by TrueForge | Sandbox | Verdicts | Approval | Outcome |
+|---|---|---|---|---|---|
+| allow | 11 | created; analyzer computed suspect v2 from bridged evidence | NOT_RECOVERED → RECOVERED | 1 pause, attested | v1 live, report RESOLVED |
+| deny | 9 | same | NOT_RECOVERED | 1 pause, denied | v2 untouched, rollback never reached the server, report UNRESOLVED |
+
+Example reports from those runs: [approved](artifacts/incidents/example-contract-test-approved.md),
+[denied](artifacts/incidents/example-contract-test-denied.md).
 
 ## Demo script
 
@@ -264,6 +277,10 @@ See [docs/demo.md](docs/demo.md) for the 2-minute run of show and recovery tips,
 ## Known limitations
 
 - One incident scenario, one versioned service, Docker Compose rather than Kubernetes.
+- TrueForge's Linux local sandbox cannot read `/usr/libexec`, so on Fedora/RHEL hosts git-backed skills fail to clone
+  inside it (and would break sandbox start-up). `setup-trueforge.sh` detects this and, instead of attaching the skill,
+  tells the agent to fetch the same analyzer over HTTPS into the sandbox. With Daytona or on Debian/Ubuntu the skill is
+  attached normally (`FORGESRE_ATTACH_SKILL=auto|always|never`).
 - The approval attestation searches recent TrueForge sessions over the local API; a multi-tenant deployment would
   pass a session-scoped identity instead.
 - Local TrueForge mode has no login; keep it on localhost (as the TrueForge docs require).

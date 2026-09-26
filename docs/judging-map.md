@@ -18,6 +18,7 @@ Where each claim is implemented and how to check it yourself.
 | Server-side safety | Name/version regex, catalog lookups, allowlists, rate limit, no shell tool, bearer auth, localhost binding | `tests/test_safety.py` (30 cases) |
 | Incident report traceable | `report.py` renders timeline/actions/before-after from `artifacts/audit/events.jsonl` | Compare report numbers to the JSON sidecar |
 | Deterministic demo | `reset-demo.sh`, `trigger-incident.sh`, `verify-*.sh` | `pytest -m integration` runs the whole cycle twice |
+| Whole lifecycle through TrueForge | `tests/test_trueforge_lifecycle.py` (scripted test-double model, real harness and systems) | allow: 11 routed calls, sandbox + bridge, NOT_RECOVERED → RECOVERED, attested rollback; deny: rollback never reaches the server |
 
 ## TrueForge capabilities used
 
@@ -28,6 +29,6 @@ Where each claim is implemented and how to check it yourself.
 | Tool annotations + `require_approval_for_tools` | YELLOW runs, RED pauses for a human |
 | Native approval UI / `user.tool_approval` | The rollback decision; also read back for attestation |
 | Sandbox as a tool + Code Mode | Diagnostic analysis with bridged MCP calls, no credentials in the sandbox |
-| Skills (git-backed) | `incident-diagnostics` loaded into the sandbox on demand |
+| Skills (git-backed) | `incident-diagnostics` loaded into the sandbox on demand (Daytona / Debian hosts; fetched over HTTPS where the local sandbox cannot run git) |
 | Sessions, events, turns API | Trace, dashboard banner, approval attestation, headless driver |
 | Local sandbox / Daytona | Local SRT sandbox in standalone mode; Daytona if `DAYTONA_API_KEY` is set |
