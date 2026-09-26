@@ -134,7 +134,8 @@ def test_full_lifecycle_through_trueforge(decision):
         "session": sid,
         "tool_sequence": list(calls.values()),
         "sandbox_created": "sandbox.created" in types,
-        "sandbox_output_head": by_tool.get("exec", [""])[0][:600],
+        "generated_script_output": by_tool.get("exec", [""])[0][:400],
+        "analyzer_output_head": by_tool.get("exec", ["", ""])[-1][:300],
         "bridged_evidence_calls": len(bridged),
         "verdicts": verdicts,
         "approvals": approvals_seen,
@@ -144,7 +145,8 @@ def test_full_lifecycle_through_trueforge(decision):
     print(json.dumps(summary, indent=2))
 
     assert "sandbox.created" in types
-    assert "evidence_score" in by_tool["exec"][0] and "suspect_version" in by_tool["exec"][0]
+    assert "failures_by_version" in by_tool["exec"][0], "generated script did not run in the sandbox"
+    assert "evidence_score" in by_tool["exec"][1] and "suspect_version" in by_tool["exec"][1]
     assert bridged, "evidence did not reach the MCP server through the sandbox bridge"
     assert approvals_seen == 1
     if decision == "allow":

@@ -7,6 +7,7 @@ named explicitly in the agent's require_approval_for_tools.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import os
@@ -217,6 +218,26 @@ async def get_incident_timeline() -> dict[str, Any]:
     """The open incident's recorded timeline: tool calls, evidence, risk assessments, actions and
     verifications with timestamps."""
     return await _call("get_incident_timeline", ops.timeline, {})
+
+
+@mcp.tool(annotations=READ)
+async def get_reference_analyzer() -> dict[str, Any]:
+    """Source of the reference incident analyzer (skills/incident-diagnostics/scripts/diagnose.py). Fetch it from
+    INSIDE the sandbox so the code never passes through the conversation:
+    mcp-client call-tool forgesre get_reference_analyzer '{}' | python3 -c "import json,sys;
+    open('diagnose.py','w').write(json.load(sys.stdin)['source'])" && python diagnose.py --window 15"""
+
+    def read() -> dict[str, Any]:
+        path = settings.root / "skills" / "incident-diagnostics" / "scripts" / "diagnose.py"
+        source = path.read_text()
+        return ok(
+            filename="diagnose.py",
+            sha256=hashlib.sha256(source.encode()).hexdigest(),
+            lines=source.count("\n"),
+            source=source,
+        )
+
+    return await _call("get_reference_analyzer", read, {})
 
 
 # --------------------------------------------------------------------------- probes / verification

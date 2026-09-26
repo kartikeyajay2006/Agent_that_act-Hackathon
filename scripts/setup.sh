@@ -22,7 +22,7 @@ fill_secret() {
   local key=$1 bytes=$2 current
   current=$(grep -E "^${key}=" .env | cut -d= -f2-)
   if [[ -z "$current" || "$current" == change-me* ]]; then
-    sed -i "s/^${key}=.*/${key}=$(openssl rand -hex "$bytes")/" .env
+    sed -i.bak "s/^${key}=.*/${key}=$(openssl rand -hex "$bytes")/" .env && rm -f .env.bak  # GNU + BSD sed
     ok "generated ${key}"
   fi
 }

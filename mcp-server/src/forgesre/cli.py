@@ -172,7 +172,10 @@ def _skill_can_install(env) -> bool:
         exec_path = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return False
-    readable = ("/usr/lib/", "/usr/lib64/", "/usr/local/", "/usr/bin", "/bin", "/lib/", "/lib64/")
+    readable = (  # TrueForge local-sandbox read roots: Linux, then macOS (Xcode CLT, Homebrew)
+        "/usr/lib/", "/usr/lib64/", "/usr/local/", "/usr/bin", "/bin", "/lib/", "/lib64/",
+        "/Library/", "/opt/homebrew/",
+    )  # fmt: skip
     return exec_path.startswith(readable)
 
 
@@ -228,13 +231,12 @@ def cmd_trueforge_setup(ops: Ops) -> int:
             "sandbox instructions)."
         )
     else:
-        raw = repo.replace("https://github.com/", "https://raw.githubusercontent.com/").rstrip("/")
-        url = f"{raw}/{ref}/skills/incident-diagnostics/scripts/diagnose.py"
         source = (
-            f"Fetch the reference analyzer into the sandbox and run it: "
-            f"`curl -fsSL {url} -o diagnose.py && python diagnose.py --window 15`."
+            "Fetch the reference analyzer through the MCP bridge from inside the sandbox (no internet needed) and "
+            "run it: `mcp-client call-tool forgesre get_reference_analyzer '{}' | python3 -c \"import json,sys; "
+            "open('diagnose.py','w').write(json.load(sys.stdin)['source'])\" && python diagnose.py --window 15`."
         )
-        print("skill not attached (sandbox cannot clone git skills here); agent fetches the analyzer over HTTPS")
+        print("skill not attached (sandbox cannot clone git skills here); analyzer delivered via the MCP bridge")
     instructions = (
         (ops.settings.root / "agent" / "forgesre.system.md").read_text().replace("{{DIAGNOSTICS_SOURCE}}", source)
     )

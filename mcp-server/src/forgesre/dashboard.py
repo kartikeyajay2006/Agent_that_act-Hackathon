@@ -46,6 +46,8 @@ def _services(ops: Ops) -> list[dict[str, Any]]:
         row: dict[str, Any] = {"name": inst.name, "version": inst.version}
         if not st.get("exists"):
             row.update(status="absent", detail="not deployed")
+        elif not st.get("running") and inst.version and inst.version != active:
+            row.update(status="absent", detail="stopped, not serving (retired)")
         elif not st.get("running"):
             row.update(status="stopped", detail=st.get("status"))
         elif inst.version and inst.version != active:

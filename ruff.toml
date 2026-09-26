@@ -1,0 +1,7 @@
+# Repo-wide lint/format settings (mirrors mcp-server/pyproject.toml).
+line-length = 120
+target-version = "py311"
+extend-exclude = [".trueforge", ".run", "mcp-server/.venv"]
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]

@@ -21,13 +21,34 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
 
-RAW = "https://raw.githubusercontent.com/kartikeyajay2006/Agent_that_act-Hackathon/main"
 DIAG = (
     "if [ -f skills/incident-diagnostics/scripts/diagnose.py ]; "
     "then python skills/incident-diagnostics/scripts/diagnose.py --window 15; "
-    f"else curl -fsSL {RAW}/skills/incident-diagnostics/scripts/diagnose.py -o diagnose.py && "
+    "else mcp-client call-tool forgesre get_reference_analyzer '{}' | "
+    "python3 -c \"import json,sys; open('diagnose.py','w').write(json.load(sys.stdin)['source'])\" && "
     "python diagnose.py --window 15; fi"
 )
+
+# What a model typically writes in step 5a: a small script that pulls evidence through the harness bridge.
+GENERATED = """cat > my_diag.py <<'PY'
+import asyncio, json
+from mcp_client import call_tool
+
+async def main():
+    ev = await call_tool("forgesre", "collect_incident_evidence", body={"window_minutes": 15})
+    err = ev["metrics"]["checkout_error_rate"][0]["points"]
+    start = next((t for t, v in err if v is not None and v > 0.05), None)
+    before = [v for t, v in err if start and t < start and v is not None]
+    fails = {}
+    for s in ev["metrics"]["checkout_errors_by_reason"]:
+        ver = s["labels"].get("upstream_version")
+        fails[ver] = fails.get(ver, 0) + sum(v for t, v in s["points"] if v is not None)
+    print(json.dumps({"incident_start": start, "baseline": sum(before) / len(before) if before else None,
+                      "peak": max(v for t, v in err if v is not None), "failures_by_version": fails}))
+
+asyncio.run(main())
+PY
+python my_diag.py"""
 REASON_RESTART = "checkout failing, payment-service-v2 pool exhausted per logs and metrics; reversible restart first"
 REASON_ROLLBACK = "restart did not recover: v2 carries all failures, deployed shortly before the spike, pool saturated"
 
@@ -39,7 +60,8 @@ STEPS: list[tuple[str, dict[str, Any], str]] = [
         "Reading errors.",
     ),
     ("get_recent_deployments", {"service": "payment-service"}, "Checking recent changes."),
-    ("exec", {"intent": "Run the incident diagnostics analyzer", "command": DIAG}, "Diagnosing in the sandbox."),
+    ("exec", {"intent": "Run my own diagnostic script", "command": GENERATED}, "Writing and running a diagnostic."),
+    ("exec", {"intent": "Cross-check with the reference analyzer", "command": DIAG}, "Cross-checking in the sandbox."),
     ("assess_action_risk", {"action": "restart_service", "service": "payment-service-v2"}, "Assessing restart risk."),
     ("restart_service", {"service": "payment-service-v2", "reason": REASON_RESTART}, "Restarting v2 (YELLOW)."),
     ("verify_recovery", {}, "Verifying the restart."),
@@ -156,8 +178,14 @@ async def completions(request: Request):
 app = Starlette(routes=[Route("/v1/chat/completions", completions, methods=["POST"])])
 
 
+_servers: dict[int, uvicorn.Server] = {}
+
+
 def serve_in_background(port: int = 18990) -> uvicorn.Server:
+    if port in _servers:  # one stand-in model per process and port
+        return _servers[port]
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    _servers[port] = server
     threading.Thread(target=server.run, daemon=True).start()
     for _ in range(50):
         if server.started:

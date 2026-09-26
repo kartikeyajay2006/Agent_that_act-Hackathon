@@ -20,16 +20,18 @@ incident success.
    summary — do not page through raw lines.
 4. **Check change history.** `get_recent_deployments` and `get_active_deployment`. `get_database_health` for
    connection ownership and state.
-5. **Diagnose in the sandbox (required).** Run the diagnostic in the TrueForge sandbox with the `exec` tool.
-   {{DIAGNOSTICS_SOURCE}}
-   Add your own script if you need another angle. If the analyzer is unavailable, write ONE Python script that fetches
-   evidence itself with `await call_tool("forgesre", "collect_incident_evidence", body={"window_minutes": 15})` and
-   computes, from that data only: incident start (first `checkout_error_rate` sample above 0.05) and the baseline
-   before it; peak error rate and p95 latency after; seconds between the latest deployment and the start; which
-   `upstream_version` carried the failures; pool and PostgreSQL utilization before vs after; the dominant ERROR event
-   per backend instance; the correlation between the suspect's pool utilization and the error rate; and an
-   `evidence_score` = fraction of independent checks that agree. Never type a conclusion or a number into a script;
-   if something cannot be computed, output `null` and say so. Re-run the diagnostic after a failed remediation.
+5. **Diagnose in the sandbox with code you write (required).** Use the sandbox `exec` tool (Code Mode).
+   a. Write your own Python diagnostic to a file in the sandbox and run it. It must fetch the evidence itself —
+      `from mcp_client import call_tool` then
+      `await call_tool("forgesre", "collect_incident_evidence", body={"window_minutes": 15})` — and compute, from that
+      data only: the incident start (first `checkout_error_rate` sample above 0.05) and the baseline before it; peak
+      error rate and p95 latency after; seconds between the latest deployment and the start; which
+      `upstream_version` carried the failures; pool and PostgreSQL utilization before vs after; the dominant ERROR
+      event per backend instance. Print one JSON object. Never type a conclusion or a number into the script; if
+      something cannot be computed, print `null` and say so.
+   b. Cross-check with the reference analyzer. {{DIAGNOSTICS_SOURCE}} State where your script and the analyzer agree
+      and where they differ, and quote its `evidence_score` and `checks`.
+   c. After a failed remediation, re-run your script to see what changed.
 6. **Hypothesis.** State it with at least three independent evidence classes (metrics, resource signal, logs,
    deployment timing, sandbox result). Use the words *hypothesis*, *evidence*, *confidence*.
 7. **Plan remediation.** Before any mutation call `assess_action_risk`. Prefer the lowest-risk reversible action.
