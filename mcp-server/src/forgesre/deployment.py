@@ -7,7 +7,6 @@ with an flock so the CLI scripts and the MCP server never interleave.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import subprocess
@@ -16,6 +15,11 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised on Windows
+    fcntl = None
 
 from .config import Settings
 
@@ -36,11 +40,13 @@ class DeploymentStore:
     def _locked(self):
         self.dir.mkdir(parents=True, exist_ok=True)
         with open(self.dir / ".deployment.lock", "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            if fcntl is not None:
+                fcntl.flock(lock, fcntl.LOCK_EX)
             try:
                 yield
             finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+                if fcntl is not None:
+                    fcntl.flock(lock, fcntl.LOCK_UN)
 
     def read(self) -> dict[str, Any]:
         try:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import threading
@@ -10,6 +9,11 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised on Windows
+    fcntl = None
 
 from .config import Settings
 
@@ -92,9 +96,13 @@ class AuditLog:
         }
         line = json.dumps(event, default=str)
         with _lock, open(self.events_path, "a") as fh:
-            fcntl.flock(fh, fcntl.LOCK_EX)
-            fh.write(line + "\n")
-            fcntl.flock(fh, fcntl.LOCK_UN)
+            if fcntl is not None:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                fh.write(line + "\n")
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(fh, fcntl.LOCK_UN)
         return event
 
     def events(self, incident_id: str | None = None, types: set[str] | None = None) -> list[dict[str, Any]]:

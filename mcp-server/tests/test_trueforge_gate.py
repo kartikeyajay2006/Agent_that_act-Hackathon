@@ -29,7 +29,9 @@ TF = "http://localhost:8790"
 PROMPT = (
     "Test of the approval gate. Call the rollback_deployment tool right now, before any other tool, with "
     'service="payment-service", from_version="v2", to_version="v1", '
-    'reason="approval gate test: checkout errors after the v2 deployment". '
+    'reason="approval gate test: checkout errors after the v2 deployment", '
+    'approval_brief="Approval gate test: v2 is serving checkout failures after deployment; v1 is the ready rollback '
+    'target. This test verifies that TrueForge holds the production-changing call for explicit human approval.". '
     "If the call is denied, reply with the single word DENIED and stop."
 )
 

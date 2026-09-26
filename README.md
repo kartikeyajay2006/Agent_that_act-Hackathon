@@ -132,31 +132,36 @@ More: [architecture §5](docs/architecture.md#5-the-approval-boundary-two-layers
 
 ## Quickstart
 
-**You need:** Docker with Compose v2 · Node.js ≥ 22.14 · [uv](https://docs.astral.sh/uv/) · a model API key for a
-provider TrueForge supports. On Linux, TrueForge's local sandbox also needs `bubblewrap socat ripgrep` (or set
-`DAYTONA_API_KEY`). macOS works out of the box with Docker Desktop.
+**You need:** Docker with Compose v2 · Node.js ≥ 22.14 · [uv](https://docs.astral.sh/uv/) · a model key.
+TrueForge's local sandbox covers **Linux** (needs `bubblewrap socat ripgrep`) and **macOS** (built in). On Windows use
+WSL2, or set a Daytona key (`write:sandboxes`, `write:snapshots`, `delete:snapshots`).
+
+### 1. Install
 
 ```bash
 git clone https://github.com/kartikeyajay2006/Agent_that_act-Hackathon.git forgesre && cd forgesre
-
 ./scripts/setup.sh        # checks prerequisites, creates .env with random secrets, builds images
 ```
+
+### 2. Choose the model
 
 Open `.env` and choose a low-latency, tool-capable model from the configured provider's current catalog. Set
 `MODEL_PROVIDER`, `MODEL_ID`, and `MODEL_API_KEY` (plus `MODEL_BASE_URL` when required); `setup-trueforge.sh` validates
 that the model is visible through TrueForge. Model selection is environment-driven rather than pinned in application
-code. See the [stage model and offline backup runbook](docs/stage-model.md).
+code. See the [stage model and offline backup runbook](docs/stage-model.md). Keep model credentials in `.env`; never
+commit them or put them in a recording.
 
-Keep model credentials in `.env`; never commit them or put them in a recording.
+### 3. Bring up the read-only investigator
 
-### Read-only investigation milestone
+The first-milestone profile is the separate saved agent `forgesre-investigator`; it is restricted to observation tools
+and has no sandbox, probes, restart, or rollback tools. Run `./scripts/up.sh` and `./scripts/doctor.sh`, then use
+`./scripts/run-investigation.sh` for a read-only run. TrueForge `0.2.1` exposes URL-backed MCP manifests, not stdio.
+Setup reads the installed OpenAPI schema and refuses loopback registration instead of weakening outbound protections.
+For a deployment with an approved reachable MCP endpoint, configure `FORGESRE_MCP_URL` to its authenticated HTTPS
+`/mcp` URL. Do not publish the local development server to bypass the policy.
 
-The first-milestone profile is the separate saved agent `forgesre-investigator`; use
-`./scripts/setup-trueforge.sh` and then `./scripts/run-investigation.sh`. It is restricted to observation tools and has
-no sandbox, probes, restart, or rollback tools. TrueForge `0.2.1` exposes only URL-backed MCP manifest types, not
-stdio. Setup reads the installed OpenAPI schema and refuses loopback registration instead of weakening outbound
-protections. For a deployment with an approved reachable MCP endpoint, set `FORGESRE_MCP_URL` to its HTTPS `/mcp`
-URL. Do not publish the local development server just to bypass the policy.
+TrueForge's local sandbox supports Linux (with `bubblewrap socat ripgrep`) and macOS; use WSL2 or a configured Daytona
+sandbox for other environments. The optional `DAYTONA_API_KEY` belongs only in local `.env`.
 
 ### Scheduled read-only on-call investigation
 
@@ -169,49 +174,63 @@ the **paused** state, then inspect the task, cadence, and agent in TrueForge. On
 `--activate` to explicitly enable recurring runs. Each run is visible as a session in TrueForge; approval-required
 events are not answered by this integration, and the scheduled investigator has no remediation tools.
 
-For an approved, TrueForge-reachable MCP URL configured in `FORGESRE_MCP_URL`, one command brings the components up.
-TrueForge 0.2.1 has no stdio transport, so the default local loopback URL intentionally fails setup preflight before
-any provider or MCP settings are written:
+### 4. Run the full incident demo
+
+The full recovery flow uses the separate action-capable `forgesre` profile. Enable it explicitly with
+`./scripts/setup-trueforge.sh --full`; the read-only investigator remains unchanged. This demo can restart the
+configured service and pauses at the rollback approval gate. Only run it against the local demo stack when you intend
+to rehearse those actions.
 
 ```bash
-./scripts/up.sh           # stack + MCP server + TrueForge + read-only investigator setup
-./scripts/doctor.sh       # every component green? each failure prints its fix
+./scripts/trigger-incident.sh
+./scripts/verify-incident.sh
 ```
+
+In TrueForge, use the incident prompt from `agent/demo-prompts.md`, then review and explicitly decide any
+approval-required rollback. The alternate latency scenario uses the same tool surface; see [the demo runbook](docs/demo.md).
+
+Before recording, `./scripts/demo-ready.sh` runs preflight and healthy-baseline checks. `./scripts/rehearse.sh` guides
+real-model rehearsal; `./scripts/eval.sh` runs configured evaluation cases. See the [submission checklist](docs/submission-checklist.md).
+
+The full agent is available in TrueForge after `setup-trueforge.sh --full`; the read-only profile remains available
+for investigations and scheduled polling.
 
 | Open | URL |
 |---|---|
-| TrueForge (read-only investigator) | http://localhost:8790 → **Agents → forgesre-investigator → Try** |
+| TrueForge, read-only | http://localhost:8790 → **Agents → forgesre-investigator → Try** |
+| TrueForge, full demo (after `--full`) | http://localhost:8790 → **Agents → forgesre → Try** |
 | Mission control | http://127.0.0.1:18900/dashboard |
 
-### Run the incident
+### Before recording or presenting
 
 ```bash
-./scripts/trigger-incident.sh     # the configured default scenario from config/incidents.yaml
-./scripts/trigger-incident.sh latency-regression  # alternate processor-latency scenario
-./scripts/verify-incident.sh      # waits until the incident is observable (~20 s)
+./scripts/demo-ready.sh               # up + doctor + healthy baseline, then prints the five demo steps
+./scripts/rehearse.sh 3               # three guided real-model runs: reset, trigger, you prompt and approve
+./scripts/eval.sh                     # scored runs: approve, deny, false alarm (see "Agent evaluation")
 ```
 
-In TrueForge, send:
+A rehearsal counts only if the agent reaches the gate, the rollback runs after Allow, verification says `RECOVERED`,
+and a report is written — the same things `eval.sh` checks automatically.
 
-```text
-Production checkout failures are being reported. Investigate the incident, determine the root cause,
-take safe recovery actions, and restore the system.
-```
-
-Watch the agent work, approve (or deny) the rollback when TrueForge asks, and read the report in
-`artifacts/incidents/`. Run it again any time with `./scripts/reset-demo.sh`.
-
-Prefer a terminal? `./scripts/run-agent.sh` drives the same TrueForge session and asks you to Allow/Deny.
-
-### No API key yet?
+### No model key yet?
 
 ```bash
-./scripts/rehearse.sh
+./scripts/rehearse.sh --scripted
 ```
 
 A scripted stand-in model drives the saved agent so you can see the whole flow; TrueForge, the tools, the sandbox and
 the approval gate are all real, and **you** click Allow or Deny in the TrueForge UI. It is a rehearsal and test aid,
 not the agent.
+
+### Fresh-laptop check
+
+A teammate on a clean macOS or Linux machine should get to a healthy baseline in under 15 minutes using only:
+
+```bash
+./scripts/setup.sh && ./scripts/preflight.sh && ./scripts/up.sh
+```
+
+If anything fails, fix the README or the script and time it again. Scripts use LF line endings via `.gitattributes`.
 
 ## MCP tools
 
@@ -247,6 +266,7 @@ not the agent.
 | `test_trueforge_lifecycle.py` · allow | **passed** | TrueForge routed 12 tool calls, 2 sandbox runs with bridged evidence, NOT_RECOVERED → RECOVERED, attested rollback, report RESOLVED |
 | `test_trueforge_lifecycle.py` · deny | **passed** | same investigation; on Deny the rollback never reached the server, v2 untouched, report UNRESOLVED |
 | `test_trueforge_gate.py` (real local model) | **passed** | deny: zero rollback calls reached the server; allow: executed with attestation |
+| `./scripts/eval.sh --scenario approve --runs 1` (configured real model) | **100/100** | generated sandbox code, approval brief, gated rollback, objective recovery and a RESOLVED report |
 
 Run them yourself: [docs/implementation.md → How it was verified](docs/implementation.md#how-it-was-verified).
 
@@ -259,7 +279,7 @@ demo/           the production system: gateway, payment v1/v2/v3, Postgres, Prom
 mcp-server/     the ForgeSRE MCP server (Python) + tests
 skills/         incident-diagnostics skill (reference analyzer for the sandbox)
 scripts/        up · doctor · setup · reset · trigger · verify · rehearse · run-agent
-docs/           architecture · implementation · winning plan · map · judging map · demo
+docs/           architecture · implementation · winning plan · map · judging map · demo · video script · build story
 ```
 
 Full file-by-file map: [docs/map.md](docs/map.md).
@@ -274,12 +294,17 @@ Full file-by-file map: [docs/map.md](docs/map.md).
 | 🗺️ [**Repository map**](docs/map.md) | every file, "where do I change X", one rollback call traced through the code |
 | ⚖️ [**Judging map**](docs/judging-map.md) | each judging criterion → code → evidence → what to show live |
 | 🎬 [**Demo runbook**](docs/demo.md) | five-minute run of show and recording checklist |
+| 🎥 [**Three-minute video script**](docs/video-script.md) | timestamped narration and exact on-screen actions for the submission video |
+| 📣 [**Public build story**](docs/build-story.md) | ready-to-personalise social post for the optional community prize |
+| ✅ [**Submission checklist**](docs/submission-checklist.md) | final technical, recording and public-submission checks |
 
 ## Known limitations
 
-- **No end-to-end run with a frontier model yet** — none was available while building. Every mechanism the model
-  relies on is verified through TrueForge (see *Verified*); rehearse with your key before a live demo.
-- Two configured incident scenarios and one versioned service; the latency scenario still needs an end-to-end rehearsal. Docker Compose, not Kubernetes.
+- The configured real model has completed the approval scenario at 100/100. Re-run `./scripts/eval.sh --scenario
+  approve --runs 1` after changing the agent prompt or model; this is still a single-model, single-scenario result,
+  not a claim of universal model reliability.
+- Two configured incident scenarios and one versioned service; the latency scenario still needs an end-to-end
+  rehearsal. The demo stack uses Docker Compose, not Kubernetes.
 - Tested on Linux (Fedora). macOS should work (Docker Desktop, TrueForge's macOS sandbox); Windows needs WSL2.
 - TrueForge local mode has no login; keep it on localhost. The approval attestation reads TrueForge's local API.
 - On Fedora/RHEL, TrueForge's local sandbox can't clone git skills, so the analyzer is delivered through the MCP bridge

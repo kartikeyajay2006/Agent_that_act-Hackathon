@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from forgesre.catalog import validate_name, validate_version
@@ -151,3 +153,11 @@ def test_agent_spec_gates_rollback_in_trueforge():
     mcp = spec["mcp_servers"][0]
     assert "rollback_deployment" in mcp["require_approval_for_tools"]
     assert spec["config"]["sandbox"]["enabled"] is True
+
+
+def test_agent_instructions_require_visible_rollback_brief():
+    root = Path(__file__).resolve().parents[2]
+    instructions = (root / "agent" / "forgesre.system.md").read_text()
+    assert "approval_brief" in instructions
+    assert "audit trail" in instructions
+    assert "displayed in TrueForge's approval panel" in instructions

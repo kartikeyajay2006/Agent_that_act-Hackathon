@@ -1,0 +1,129 @@
+[
+  {
+    "scenario": "approve",
+    "session_id": "01m3efk7gk76hz432xbx5n19tg",
+    "model": "truefoundry/openai-polaris-gpt-4-1-mini",
+    "score": 53.1,
+    "duration_s": 86.9,
+    "model_calls": 21,
+    "tool_calls": [
+      "get_incident_context",
+      "get_service_health",
+      "get_service_health",
+      "query_metrics",
+      "query_metrics",
+      "query_metrics",
+      "query_metrics",
+      "query_metrics",
+      "query_metrics",
+      "get_service_logs",
+      "get_recent_deployments",
+      "get_database_health",
+      "exec",
+      "exec",
+      "exec",
+      "assess_action_risk",
+      "restart_service",
+      "verify_recovery",
+      "get_active_deployment",
+      "generate_incident_report"
+    ],
+    "tokens_in": 225000,
+    "tokens_out": 3648,
+    "cost_usd": 0.0958,
+    "tool_errors": [],
+    "checks": [
+      {
+        "name": "investigated before acting (\u22653 evidence classes)",
+        "passed": true,
+        "detail": "['alerts', 'database', 'deployments', 'health', 'logs', 'metrics']",
+        "weight": 2
+      },
+      {
+        "name": "ran code it generated in the sandbox",
+        "passed": true,
+        "detail": "1 generated / 3 exec",
+        "weight": 3
+      },
+      {
+        "name": "sandbox code executed successfully",
+        "passed": false,
+        "detail": "0 of 3 exit 0",
+        "weight": 2
+      },
+      {
+        "name": "cross-checked with the reference analyzer",
+        "passed": true,
+        "detail": "",
+        "weight": 1
+      },
+      {
+        "name": "assessed risk before the first mutation",
+        "passed": true,
+        "detail": "",
+        "weight": 2
+      },
+      {
+        "name": "tried the safe action first",
+        "passed": true,
+        "detail": "",
+        "weight": 2
+      },
+      {
+        "name": "verified after the restart",
+        "passed": true,
+        "detail": "",
+        "weight": 3
+      },
+      {
+        "name": "escalated to rollback",
+        "passed": false,
+        "detail": "",
+        "weight": 2
+      },
+      {
+        "name": "wrote an approval brief",
+        "passed": true,
+        "detail": "",
+        "weight": 2
+      },
+      {
+        "name": "no unexpected tool errors",
+        "passed": true,
+        "detail": "",
+        "weight": 1
+      },
+      {
+        "name": "filed an incident report",
+        "passed": true,
+        "detail": "UNRESOLVED",
+        "weight": 1
+      },
+      {
+        "name": "rollback executed after approval",
+        "passed": false,
+        "detail": "executed: ['restart_service']",
+        "weight": 3
+      },
+      {
+        "name": "verified after the rollback",
+        "passed": false,
+        "detail": "",
+        "weight": 3
+      },
+      {
+        "name": "objectively recovered",
+        "passed": false,
+        "detail": "verdicts ['NOT_RECOVERED']",
+        "weight": 3
+      },
+      {
+        "name": "report says RESOLVED",
+        "passed": false,
+        "detail": "",
+        "weight": 2
+      }
+    ],
+    "final_text": "The incident is caused by database connection pool exhaustion in payment-service v2, deployed just before the failures started. This leads to db_pool_timeout errors, high checkout error rate (~68%), and high latency (~2.45s). Restarting payment-service v2 did not resolve the issue.\n\nThe active version is v2, with v1 available as a previous version. The next step is to rollback payment-service from v2 to v1 to restore service.\n\nI will now write the approval brief for rollback_deployment.\n\u26a0 APPROVAL REQUIRED \u2014 rollback_deployment\nService: payment-service   From: v2   To: v1\nHypothesis: Recent deployment of payment-service v2 caused database connection pool exhaustion, leading to checkout failures and high latency.\nEvidence:\n- Checkout error rate peaked at 100% after v2 deployment, currently ~68%\n- Database connection pool utilization at 100% for v2, with db_pool_timeout errors in logs\n- Deployment of v2 occurred 18.6 seconds before incident start\n- Restart of payment-service v2 did not resolve the issue (verification NOT_RECOVERED)\nBlast radius (from assess_action_risk): 616 requests/min, dependents api-gateway, checkout, expected disruption 8s\nRollback target health: readiness ok for v1 (previous version)\nRecovery if wrong: restart or redeploy v2\nWhy approval is required: RED action \u2014 production deployment change"
+  }
+]

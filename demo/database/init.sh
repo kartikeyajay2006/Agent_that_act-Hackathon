@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Schema + a least-privilege monitoring role used by the MCP server's
 # database health tool (pg_monitor can read pg_stat_activity, nothing more).
 set -euo pipefail

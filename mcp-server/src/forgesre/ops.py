@@ -506,7 +506,9 @@ class Ops:
             return partial(f"{inst.name} did not become live within {timeout}s", **result)
         return ok(**result)
 
-    def rollback(self, service: str, from_version: str, to_version: str, reason: str) -> dict[str, Any]:
+    def rollback(
+        self, service: str, from_version: str, to_version: str, reason: str, approval_brief: str | None = None
+    ) -> dict[str, Any]:
         policy = self.settings.action_policy("rollback_deployment")
         validate_name(service)
         validate_version(from_version, "from_version")
@@ -548,6 +550,7 @@ class Ops:
                 "from_version": from_version,
                 "to_version": to_version,
                 "reason": reason[:500],
+                "approval_brief": approval_brief[:3000] if approval_brief else None,
                 "before": before,
                 "approval": {
                     "required": True,

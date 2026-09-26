@@ -51,6 +51,15 @@ PY
 python my_diag.py"""
 REASON_RESTART = "checkout failing, payment-service-v2 pool exhausted per logs and metrics; reversible restart first"
 REASON_ROLLBACK = "restart did not recover: v2 carries all failures, deployed shortly before the spike, pool saturated"
+APPROVAL_BRIEF = (
+    "⚠ APPROVAL REQUIRED — rollback_deployment\n"
+    "Hypothesis: payment-service v2 exhausts its database connection pool.\n"
+    "Evidence: checkout failures are concentrated on v2; v2 pool is saturated; logs show db_pool_timeout; "
+    "v2 was deployed immediately before the spike.\n"
+    "Safe action: restart_service verified NOT_RECOVERED.\n"
+    "Blast radius: checkout and api-gateway depend on this service.\n"
+    "Target readiness: v1 is ready. Recovery plan: roll forward to v2 only after the defect is fixed."
+)
 
 STEPS: list[tuple[str, dict[str, Any], str]] = [
     ("get_incident_context", {}, "Checking alerts and current signals."),
@@ -72,7 +81,13 @@ STEPS: list[tuple[str, dict[str, Any], str]] = [
     ),
     (
         "rollback_deployment",
-        {"service": "payment-service", "from_version": "v2", "to_version": "v1", "reason": REASON_ROLLBACK},
+        {
+            "service": "payment-service",
+            "from_version": "v2",
+            "to_version": "v1",
+            "reason": REASON_ROLLBACK,
+            "approval_brief": APPROVAL_BRIEF,
+        },
         "Requesting approval for the rollback (RED).",
     ),
     ("verify_recovery", {}, "Verifying the rollback."),
