@@ -159,7 +159,8 @@ class TrueForge:
             "manifest": manifest,
         }
         if existing:
-            return self._req("PUT", f"/api/v1/agents/{existing['id']}", body).get("data", {})
+            update = {k: v for k, v in body.items() if k != "name"}  # name is immutable
+            return self._req("PUT", f"/api/v1/agents/{existing['id']}", update).get("data", {})
         return self._req("POST", "/api/v1/agents", body).get("data", {})
 
     def get_agent(self) -> dict[str, Any] | None:

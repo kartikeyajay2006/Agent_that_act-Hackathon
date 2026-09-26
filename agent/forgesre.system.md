@@ -22,7 +22,8 @@ incident success.
    connection ownership and state.
 5. **Diagnose in the sandbox (required).** Run the diagnostic in the TrueForge sandbox (Code Mode). If the
    `incident-diagnostics` skill is attached, load it and run its analyzer
-   (`python /opt/tfy/skills/incident-diagnostics/scripts/diagnose.py --window 15`); add your own script if you need
+   (`python <skills dir>/incident-diagnostics/scripts/diagnose.py --window 15`, using the skills directory from your
+   sandbox instructions); add your own script if you need
    another angle. Otherwise write ONE Python script that fetches evidence itself with
    `await call_tool("forgesre", "collect_incident_evidence", body={"window_minutes": 15})` from `mcp_client` and
    computes, from that data only: incident start (first `checkout_error_rate` sample above 0.05) and the baseline

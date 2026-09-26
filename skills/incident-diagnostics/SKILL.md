@@ -10,10 +10,11 @@ fetched through the harness-bridged `mcp_client`, so the sandbox never needs pro
 
 ## Run it
 
-Use Code Mode (Python in the sandbox):
+Use the sandbox `exec` tool (Code Mode). The skills directory is named in your sandbox instructions — `skills/`
+in TrueForge's local sandbox, `/opt/tfy/skills/` on Daytona:
 
 ```bash
-python /opt/tfy/skills/incident-diagnostics/scripts/diagnose.py --window 15
+python <skills dir>/incident-diagnostics/scripts/diagnose.py --window 15
 ```
 
 The script calls `forgesre / collect_incident_evidence` itself and prints one JSON object:

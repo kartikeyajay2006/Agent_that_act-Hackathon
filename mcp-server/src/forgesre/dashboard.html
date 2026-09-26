@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ForgeSRE mission control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
+<style>
+  :root {
+    --bg: #16202b;
+    --surface: #1c2835;
+    --raised: #223142;
+    --line: #2b3a4a;
+    --text: #dce4ec;
+    --muted: #8a9bad;
+    --ok: #4fb39a;
+    --warn: #e0a43a;
+    --bad: #e2665a;
+    --gate: #7fa7e6;
+    --radius-panel: 10px;
+    --radius-chip: 999px;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0; color: var(--text); background: var(--bg);
+    font: 400 15px/1.45 "Archivo", system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 20px 20px 40px; }
+  header { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  .env { color: var(--muted); }
+  .status {
+    margin-left: auto; padding: 5px 14px; border-radius: var(--radius-chip); font-weight: 600;
+    border: 1px solid currentColor;
+  }
+  .status.ok { color: var(--ok); } .status.bad { color: var(--bad); } .status.gate { color: var(--gate); }
+
+  /* The closed loop: the one expressive element on the page. */
+  .loop { margin: 22px 0 8px; display: grid; grid-template-columns: repeat(6, 1fr); position: relative; }
+  .loop::before {
+    content: ""; position: absolute; left: 4%; right: 4%; top: 17px; height: 2px; background: var(--line);
+  }
+  .step { position: relative; text-align: center; color: var(--muted); }
+  .step .dot {
+    width: 36px; height: 36px; margin: 0 auto 8px; border-radius: 50%; background: var(--bg);
+    border: 2px solid var(--line); display: grid; place-items: center;
+    font-stretch: 75%; font-weight: 700; font-size: 15px;
+  }
+  .step.done { color: var(--text); }
+  .step.done .dot { border-color: var(--muted); background: var(--raised); }
+  .step.now { color: var(--text); font-weight: 600; }
+  .step.now .dot { border-color: var(--warn); background: var(--warn); color: var(--bg); }
+  .step.now.recover .dot { border-color: var(--ok); background: var(--ok); }
+  .loopnote { display: flex; gap: 14px; align-items: baseline; color: var(--muted); min-height: 24px; margin-bottom: 18px; }
+  .loopnote b { color: var(--text); font-weight: 600; }
+  .iter { font-stretch: 75%; font-weight: 700; color: var(--warn); }
+
+  .gatebar {
+    display: none; border: 1px solid var(--gate); background: rgba(127,167,230,.08);
+    border-radius: var(--radius-panel); padding: 14px 18px; margin-bottom: 18px;
+  }
+  .gatebar.on { display: block; }
+  .gatebar h2 { margin: 0 0 4px; font-size: 17px; color: var(--gate); }
+  .gatebar p { margin: 0; color: var(--text); }
+  .gatebar code { font-family: inherit; font-stretch: 87%; color: var(--gate); }
+
+  .grid { display: grid; grid-template-columns: 260px 1fr 360px; gap: 16px; align-items: start; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 16px 18px; }
+  section h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; color: var(--muted); }
+
+  .svc { display: grid; grid-template-columns: 12px 1fr; gap: 2px 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }
+  .svc:first-of-type { border-top: 0; }
+  .led { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .led.healthy { background: var(--ok); } .led.degraded { background: var(--warn); }
+  .led.stopped, .led.down { background: var(--bad); } .led.standby { background: transparent; border: 2px solid var(--muted); }
+  .led.absent { background: transparent; border: 2px dashed var(--line); }
+  .svc .n { font-weight: 500; }
+  .svc .d { grid-column: 2; color: var(--muted); font-size: 13px; }
+  .route { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  .route b { color: var(--text); }
+
+  .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .metric { background: var(--raised); border-radius: 8px; padding: 12px 14px 8px; }
+  .metric .label { color: var(--muted); font-size: 13px; }
+  .metric .value { font-stretch: 70%; font-weight: 700; font-size: 40px; line-height: 1.05; margin: 2px 0 4px; }
+  .metric .value.bad { color: var(--bad); } .metric .value.warn { color: var(--warn); } .metric .value.ok { color: var(--ok); }
+  .metric svg { width: 100%; height: 42px; display: block; }
+  .metric .threshold { color: var(--muted); font-size: 12px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 6px; border-top: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { text-align: right; font-stretch: 87%; }
+  th.num { text-align: right; }
+
+  .crit { list-style: none; padding: 0; margin: 12px 0 0; font-size: 14px; }
+  .crit li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line); }
+  .pass { color: var(--ok); } .fail { color: var(--bad); }
+
+  .feed { list-style: none; margin: 0; padding: 0; max-height: 640px; overflow: auto; font-size: 14px; }
+  .feed li { display: grid; grid-template-columns: 62px 16px 1fr; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .feed li:first-child { border-top: 0; }
+  .feed time { color: var(--muted); font-stretch: 87%; }
+  .feed .mark.ok { color: var(--ok); } .feed .mark.bad { color: var(--bad); } .feed .mark.act { color: var(--warn); }
+  .feed .what small { display: block; color: var(--muted); }
+  .empty { color: var(--muted); }
+  .tf { margin-top: 12px; color: var(--muted); font-size: 14px; }
+  .tf a { color: var(--gate); }
+  a:focus-visible { outline: 2px solid var(--gate); outline-offset: 2px; }
+
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr 1fr; } .grid > :last-child { grid-column: 1 / -1; } }
+  @media (max-width: 720px) {
+    .grid { grid-template-columns: 1fr; }
+    .metrics { grid-template-columns: 1fr; }
+    .loop .step span { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) { .step .dot { transition: background .4s, border-color .4s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ForgeSRE</h1>
+    <span class="env" id="env">connecting…</span>
+    <span class="status ok" id="status">Checking</span>
+  </header>
+
+  <div class="loop" id="loop" aria-label="Incident control loop"></div>
+  <div class="loopnote"><span class="iter" id="iter"></span><span id="loopnote"></span></div>
+
+  <div class="gatebar" id="gate" role="alert">
+    <h2>Waiting for a human in TrueForge</h2>
+    <p id="gatetext"></p>
+  </div>
+
+  <div class="grid">
+    <section>
+      <h2>System health</h2>
+      <div id="services"></div>
+      <div class="route" id="route"></div>
+      <div class="tf" id="tf"></div>
+    </section>
+
+    <section>
+      <h2>Checkout signals, last 10 minutes</h2>
+      <div class="metrics" id="metrics"></div>
+      <table id="compare" aria-label="Before and after"></table>
+      <ul class="crit" id="criteria"></ul>
+    </section>
+
+    <section>
+      <h2>Incident timeline</h2>
+      <ul class="feed" id="feed"></ul>
+    </section>
+  </div>
+</div>
+
+<script>
+const PHASES = ["Detect", "Investigate", "Prove", "Act", "Verify", "Recover"];
+const $ = (id) => document.getElementById(id);
+const pct = (v) => v == null ? "–" : (v * 100).toFixed(v < 0.1 ? 1 : 0) + "%";
+const secs = (v) => v == null ? "–" : v < 1 ? Math.round(v * 1000) + " ms" : v.toFixed(2) + " s";
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour12: false });
+
+const METRICS = [
+  { key: "checkout_error_rate", series: "checkout_error_rate", label: "Checkout errors", fmt: pct, warn: 0.01, bad: 0.05, limit: "alert above 5%" },
+  { key: "checkout_latency_p95_seconds", series: "checkout_latency_p95", label: "Checkout p95 latency", fmt: secs, warn: 0.5, bad: 1, limit: "alert above 1 s" },
+  { key: "db_connection_utilization", series: "db_connection_utilization", label: "Database connections used", fmt: pct, warn: 0.6, bad: 0.8, limit: "recovered below 70%" },
+  { key: "checkout_requests_per_second", series: "checkout_request_rate", label: "Checkout requests", fmt: (v) => v == null ? "–" : (v * 60).toFixed(0) + "/min", limit: "live customer traffic" },
+];
+
+function spark(points, color) {
+  if (!points || points.length < 2) return '<svg aria-hidden="true"></svg>';
+  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), ymax = Math.max(...ys, 1e-9);
+  const pts = points.map(([x, y]) => `${((x - x0) / (x1 - x0 || 1) * 300).toFixed(1)},${(40 - y / ymax * 36).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 300 42" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="${color}" stroke-width="2" points="${pts}" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function level(m, v) {
+  if (v == null || m.bad == null) return "";
+  return v >= m.bad ? "bad" : v >= m.warn ? "warn" : "ok";
+}
+
+function render(s) {
+  $("env").textContent = `${s.environment}, payment-service ${s.active_version ?? "?"} live`;
+  const tf = s.trueforge || {};
+  const pending = tf.pending_approval;
+  const inc = s.incident;
+  const st = $("status");
+  if (pending) { st.textContent = "Approval required"; st.className = "status gate"; }
+  else if (inc && inc.status === "open" && s.loop.phase !== "Recover") { st.textContent = `Investigating ${inc.incident_id}`; st.className = "status bad"; }
+  else if (s.alerts.length) { st.textContent = `${s.alerts.length} alert${s.alerts.length > 1 ? "s" : ""} firing`; st.className = "status bad"; }
+  else if (inc) { st.textContent = `${inc.incident_id} ${inc.status === "open" ? "recovered" : inc.status}`; st.className = "status ok"; }
+  else { st.textContent = "All systems healthy"; st.className = "status ok"; }
+
+  const cur = PHASES.indexOf(s.loop.phase);
+  $("loop").innerHTML = PHASES.map((p, i) => {
+    const cls = i < cur ? "done" : i === cur ? `now${p === "Recover" ? " recover" : ""}` : "";
+    return `<div class="step ${cls}"><div class="dot">${i + 1}</div><span>${p}</span></div>`;
+  }).join("");
+  $("iter").textContent = s.loop.iteration > 1 ? `Loop ${s.loop.iteration}` : "";
+  $("loopnote").textContent = s.loop.note || "";
+
+  $("gate").classList.toggle("on", !!pending);
+  if (pending) {
+    let args = pending.arguments; try { args = JSON.parse(args); } catch (e) {}
+    const a = typeof args === "object" && args ? args : {};
+    $("gatetext").innerHTML = `The agent asked to run <code>${esc(pending.tool)}</code>` +
+      (a.service ? ` on ${esc(a.service)} from ${esc(a.from_version)} to ${esc(a.to_version)}` : "") +
+      `. TrueForge is holding the call. Nothing changes until someone approves it in the <a href="${esc(tf.url)}">TrueForge session</a>.`;
+  }
+
+  $("services").innerHTML = s.services.map((x) =>
+    `<div class="svc"><span class="led ${x.status}" title="${esc(x.status)}"></span><span class="n">${esc(x.name)}</span><span class="d">${esc(x.detail)}</span></div>`
+  ).join("");
+  $("route").innerHTML = `Gateway routes checkout to <b>payment-service ${esc(s.gateway_route ?? "?")}</b>`;
+  $("tf").innerHTML = !tf.reachable ? "TrueForge not reachable" :
+    tf.session ? `TrueForge session <a href="${esc(tf.url)}">${esc(tf.session.id.slice(-8))}</a>: ${tf.session.tool_responses} tool results${tf.sandbox_used ? ", sandbox used" : ""}` +
+      (tf.last_decision ? `. Last approval: ${esc(tf.last_decision.tool)} ${tf.last_decision.decision === "allow" ? "approved" : "denied"}` : "")
+    : "No ForgeSRE session in TrueForge yet";
+
+  $("metrics").innerHTML = METRICS.map((m) => {
+    const v = s.signals[m.key];
+    const lv = level(m, v);
+    const color = lv === "bad" ? "var(--bad)" : lv === "warn" ? "var(--warn)" : "var(--muted)";
+    return `<div class="metric"><div class="label">${m.label}</div><div class="value ${lv}">${m.fmt(v)}</div>${spark(s.series[m.series], color)}<div class="threshold">${m.limit}</div></div>`;
+  }).join("");
+
+  const b = s.before, a = s.after;
+  $("compare").innerHTML = b ? `<tr><th>Before and after</th><th class="num">At detection</th><th class="num">Latest verification</th></tr>` +
+    [["Serving version", (x) => x?.active_version ?? "–"],
+     ["Checkout errors", (x) => pct(x?.checkout_error_rate)],
+     ["p95 latency", (x) => secs(x?.checkout_latency_p95_seconds)],
+     ["Database connections", (x) => x?.db_connections_total == null ? "–" : `${x.db_connections_total} (${pct(x.db_connection_utilization)})`]]
+      .map(([n, f]) => `<tr><td>${n}</td><td class="num">${esc(f(b))}</td><td class="num">${a ? esc(f(a)) : "pending"}</td></tr>`).join("") : "";
+
+  const v = s.verification;
+  $("criteria").innerHTML = v ? `<li><b>Verification: ${v.verdict === "RECOVERED" ? '<span class="pass">recovered</span>' : '<span class="fail">not recovered</span>'}</b><span>${s.verdicts.join(" → ")}</span></li>` +
+    v.criteria.map((c) => `<li><span>${esc(c.criterion.replaceAll("_", " "))}</span><span class="${c.passed ? "pass" : "fail"}">${esc(typeof c.observed === "number" ? +c.observed.toFixed(3) : c.observed)} ${c.passed ? "✓" : "✗"}</span></li>`).join("") : "";
+
+  const feed = s.timeline.slice().reverse().map((e) => {
+    const bad = /fail|NOT_RECOVERED|refused|INVALID|NOT_|ERROR|_ERROR|UNKNOWN|DENIED|MISMATCH/i.test(e.status);
+    const act = e.type.startsWith("action") || e.type === "risk_assessed";
+    const mark = bad ? "✗" : act ? "◆" : "✓";
+    const label = {
+      tool_call: esc(e.source.replaceAll("_", " ")),
+      incident_started: "Incident opened",
+      evidence_collected: "Evidence bundle for sandbox",
+      risk_assessed: "Risk assessed",
+      action_started: `${esc(e.source.replaceAll("_", " "))} started`,
+      action_completed: `${esc(e.source.replaceAll("_", " "))} finished`,
+      verification_started: "Verification started",
+      verification_completed: `Verification: ${e.status === "RECOVERED" ? "recovered" : "not recovered"}`,
+      synthetic_check: "Synthetic checkout probes",
+      report_generated: "Incident report written",
+      approval_missing: "Rollback refused, no approval",
+    }[e.type] || esc(e.type);
+    const sub = e.type === "tool_call" && e.status !== "success" ? e.status : e.target ? e.target : "";
+    return `<li><time>${clock(e.at)}</time><span class="mark ${bad ? "bad" : act ? "act" : "ok"}">${mark}</span><span class="what">${label}${sub ? `<small>${esc(sub)}</small>` : ""}</span></li>`;
+  }).join("");
+  $("feed").innerHTML = feed || '<li class="empty">No incident activity yet. The timeline fills as the agent calls tools.</li>';
+  if (s.report) $("feed").insertAdjacentHTML("afterbegin", `<li><time></time><span class="mark ok">✓</span><span class="what">Report ready<small>${esc(s.report)}</small></span></li>`);
+}
+
+async function tick() {
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" });
+    render(await r.json());
+  } catch (e) {
+    $("env").textContent = "Lost connection to the ForgeSRE MCP server";
+  }
+}
+tick();
+setInterval(tick, 2000);
+</script>
+</body>
+</html>
