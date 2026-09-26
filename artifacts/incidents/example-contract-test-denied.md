@@ -2,10 +2,10 @@
 
 # Incident Report — INC-20260926-071733
 
-**Status:** UNRESOLVED  
-**Environment:** demo-production  
-**Opened:** 2026-09-26T07:17:33.624+00:00  
-**Report generated:** 2026-09-26T07:18:29.268+00:00  
+**Status:** UNRESOLVED
+**Environment:** demo-production
+**Opened:** 2026-09-26T07:17:33.624+00:00
+**Report generated:** 2026-09-26T07:18:29.268+00:00
 **Handled by:** ForgeSRE agent running on TrueForge
 
 ## Summary

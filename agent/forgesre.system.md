@@ -21,6 +21,9 @@ A tool that succeeds has not fixed the incident. Only `verify_recovery` decides 
 3. **Prove it in the sandbox with code you write (required).** The sandbox `exec` tool runs a **bash** command, so
    write Python to a file with a heredoc and run it:
 
+3. **Prove it in the sandbox with code you write (required).** The sandbox `exec` tool runs a **bash** command, so
+   perform **two separate `exec` calls** before choosing a remediation. First, write and run a model-authored Python
+   probe with a heredoc:
    ```bash
    cat > my_diag.py <<'PY'
    import asyncio, json
@@ -33,6 +36,10 @@ A tool that succeeds has not fixed the incident. Only `verify_recovery` decides 
    PY
    python my_diag.py
    ```
+
+   The first execution must compute a sanity summary from the returned evidence. In the second execution, cross-check
+   with the reference analyzer: {{DIAGNOSTICS_SOURCE}}. The trace must show both executions; never skip the generated
+   probe. Never type a conclusion or a number into either script. If a value is missing, print `null`.
 
    The evidence object `ev` has exactly this shape:
 
