@@ -207,7 +207,8 @@ Missing data counts as a failure.
 ## Running locally
 
 Requirements: Docker with Compose v2, Node.js ≥ 22.14, [uv](https://docs.astral.sh/uv/), and for TrueForge's local
-sandbox on Linux `bwrap`, `socat`, `ripgrep` (or a Daytona key). An API key for a model TrueForge supports.
+sandbox on Linux `bwrap`, `socat`, `ripgrep` (or a Daytona key). macOS and Windows require a valid Daytona key for
+the sandbox provider. You also need an API key for a model TrueForge supports.
 
 ```bash
 cp .env.example .env            # or let setup.sh create it with random secrets
@@ -219,6 +220,49 @@ cp .env.example .env            # or let setup.sh create it with random secrets
 ./scripts/start-trueforge.sh    # TrueForge 0.2.1, UI on http://localhost:8790
 ./scripts/setup-trueforge.sh    # model, MCP connector, skill, sandbox, agent + approval gate
 ```
+
+### Preflight and three-run rehearsal
+
+Never commit a provider key. Put the real values in the local `.env` file and verify them without printing the secret:
+
+```bash
+MODEL_PROVIDER=anthropic       # or openai, google-gemini, truefoundry, custom
+MODEL_ID=<a model available in the TrueForge catalog>
+MODEL_API_KEY=<real provider key>
+```
+
+Then run the preflight and rehearsal helper:
+
+```bash
+./scripts/preflight.sh
+./scripts/start-trueforge.sh
+./scripts/setup-trueforge.sh
+./scripts/rehearse.sh 3
+```
+
+For each rehearsal, the helper resets the demo, triggers the v2 incident, and waits for the incident to be
+observable. In the TrueForge UI, send the prompt printed by the helper, inspect the trace for both sandbox `exec`
+steps (the model-authored probe and `incident-diagnostics`), review the approval brief, and click **Allow**. A run is
+successful only when the agent reaches the approval gate, the rollback is executed after approval, verification says
+`RECOVERED`, and an incident report is written. Record the three session ids and report paths for the demo evidence.
+
+### Fresh-laptop check
+
+On a clean macOS or Linux machine, a teammate should follow only these steps from a fresh clone:
+
+```bash
+cp .env.example .env
+# fill MODEL_PROVIDER, MODEL_ID, and MODEL_API_KEY in .env
+./scripts/setup.sh
+./scripts/start-demo.sh
+./scripts/preflight.sh
+./scripts/start-trueforge.sh
+./scripts/setup-trueforge.sh
+```
+
+The expected target is a healthy baseline in under 15 minutes. If setup fails, capture the first failing command and
+fix the README or script before repeating the timing test. Shell scripts are checked out with LF line endings via
+`.gitattributes`.
 
 | Variable | Meaning |
 |---|---|

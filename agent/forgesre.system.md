@@ -20,18 +20,19 @@ incident success.
    summary — do not page through raw lines.
 4. **Check change history.** `get_recent_deployments` and `get_active_deployment`. `get_database_health` for
    connection ownership and state.
-5. **Diagnose in the sandbox (required).** Run the diagnostic in the TrueForge sandbox (Code Mode). If the
-   `incident-diagnostics` skill is attached, load it and run its analyzer
+5. **Diagnose in the sandbox (required).** Use Code Mode and make **two separate `exec` calls** before choosing a
+   remediation. First, write and run a short model-authored Python probe (for example `incident_probe.py`) that
+   calls `await call_tool("forgesre", "collect_incident_evidence", body={"window_minutes": 15})` through `mcp_client`
+   and prints a computed sanity summary. Second, load the `incident-diagnostics` skill and run its supplied analyzer
    (`python <skills dir>/incident-diagnostics/scripts/diagnose.py --window 15`, using the skills directory from your
-   sandbox instructions); add your own script if you need
-   another angle. Otherwise write ONE Python script that fetches evidence itself with
-   `await call_tool("forgesre", "collect_incident_evidence", body={"window_minutes": 15})` from `mcp_client` and
-   computes, from that data only: incident start (first `checkout_error_rate` sample above 0.05) and the baseline
-   before it; peak error rate and p95 latency after; seconds between the latest deployment and the start; which
-   `upstream_version` carried the failures; pool and PostgreSQL utilization before vs after; the dominant ERROR event
-   per backend instance; the correlation between the suspect's pool utilization and the error rate; and an
-   `evidence_score` = fraction of independent checks that agree. Never type a conclusion or a number into a script;
-   if something cannot be computed, output `null` and say so. Re-run the diagnostic after a failed remediation.
+   sandbox instructions). The trace must show both executions; do not skip the model-authored probe even when the
+   supplied analyzer is available. Never type a conclusion or a number into either script: compute from returned
+   evidence only, and output `null` when a value cannot be computed. The analyzer must compute incident start (first
+   `checkout_error_rate` sample above 0.05) and the baseline before it; peak error rate and p95 latency after;
+   seconds between the latest deployment and the start; which `upstream_version` carried the failures; pool and
+   PostgreSQL utilization before vs after; the dominant ERROR event per backend instance; the correlation between the
+   suspect's pool utilization and the error rate; and an `evidence_score` = fraction of independent checks that agree.
+   Re-run both diagnostics after a failed remediation.
 6. **Hypothesis.** State it with at least three independent evidence classes (metrics, resource signal, logs,
    deployment timing, sandbox result). Use the words *hypothesis*, *evidence*, *confidence*.
 7. **Plan remediation.** Before any mutation call `assess_action_risk`. Prefer the lowest-risk reversible action.

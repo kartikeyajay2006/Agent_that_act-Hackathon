@@ -210,9 +210,10 @@ def build_report(
     out_dir = settings.artifacts_dir / "incidents"
     out_dir.mkdir(parents=True, exist_ok=True)
     md_path = out_dir / f"{incident_id}.md"
-    md_path.write_text("\n".join(lines))
+    md_path.write_text("\n".join(lines), encoding="utf-8")
     (out_dir / f"{incident_id}.json").write_text(
-        json.dumps({"incident": inc, "events": events, "final_status": final_status}, indent=2, default=str)
+        json.dumps({"incident": inc, "events": events, "final_status": final_status}, indent=2, default=str),
+        encoding="utf-8",
     )
     audit.record("report_generated", "generate_incident_report", final_status, {"path": str(md_path)})
     if inc:
