@@ -16,15 +16,20 @@ if ((${#missing[@]})); then
 fi
 ok "prerequisites present"
 
-if [[ ! -f .env ]]; then
-  cp .env.example .env
-  sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" .env
-  sed -i "s/^MONITOR_PASSWORD=.*/MONITOR_PASSWORD=$(openssl rand -hex 16)/" .env
-  sed -i "s/^FORGESRE_MCP_TOKEN=.*/FORGESRE_MCP_TOKEN=$(openssl rand -hex 24)/" .env
-  ok "created .env with random database passwords — add MODEL_API_KEY before running the agent"
-else
-  ok ".env already exists"
-fi
+[[ -f .env ]] || cp .env.example .env
+# Replace placeholder or empty secrets with random values (works whether or not .env was copied by hand).
+fill_secret() {
+  local key=$1 bytes=$2 current
+  current=$(grep -E "^${key}=" .env | cut -d= -f2-)
+  if [[ -z "$current" || "$current" == change-me* ]]; then
+    sed -i "s/^${key}=.*/${key}=$(openssl rand -hex "$bytes")/" .env
+    ok "generated ${key}"
+  fi
+}
+fill_secret POSTGRES_PASSWORD 16
+fill_secret MONITOR_PASSWORD 16
+fill_secret FORGESRE_MCP_TOKEN 24
+grep -qE "^MODEL_API_KEY=.+" .env || warn "MODEL_API_KEY is empty — add your model provider key to .env before ./scripts/setup-trueforge.sh"
 
 say "installing MCP server environment (uv)"
 (cd mcp-server && VIRTUAL_ENV= uv sync --quiet)
