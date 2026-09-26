@@ -30,7 +30,7 @@ actions:
     class: yellow
     autonomous: true
     # Stateful or shared infrastructure is never restarted by the agent.
-    allowed_targets: [api-gateway, payment-service-v1, payment-service-v2, traffic-generator]
+    allowed_targets: [api-gateway, payment-service-v1, payment-service-v2, payment-service-v3, traffic-generator]
     max_per_target_per_window: 2
     window_minutes: 10
     readiness_timeout_seconds: 30

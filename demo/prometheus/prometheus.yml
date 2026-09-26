@@ -18,6 +18,8 @@ scrape_configs:
         labels: { component: payment-service, instance_version: v1 }
       - targets: ["payment-v2:8000"]
         labels: { component: payment-service, instance_version: v2 }
+      - targets: ["payment-v3:8000"]
+        labels: { component: payment-service, instance_version: v3 }
 
   - job_name: postgres
     static_configs:

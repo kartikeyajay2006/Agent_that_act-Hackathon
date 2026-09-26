@@ -1,8 +1,8 @@
 # Objective recovery criteria. verify_recovery passes only when ALL hold.
 recovery:
-  settle_seconds: 30            # wait after an action so rate windows only see post-action traffic
+  settle_seconds: 20            # demo timing; wait after an action so rate windows only see post-action traffic
   max_settle_seconds: 90
-  metric_window: 30s            # PromQL rate window used for post-action measurements
+  metric_window: 20s            # PromQL rate window used for post-action measurements
   synthetic_requests: 20
   thresholds:
     synthetic_success_ratio_min: 0.95

@@ -19,6 +19,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+from trueforge_sdk import ScheduleManifest
+from trueforge_sdk import TrueForge as TrueForgeSDK
 
 AGENT_NAME = "forgesre"
 READ_ONLY_AGENT_NAME = "forgesre-investigator"
@@ -78,8 +80,14 @@ class TrueForge:
         self, method: str, path: str, body: Any | None = None, params: dict | None = None, timeout: float | None = None
     ) -> Any:
         try:
+            token = os.environ.get("TRUEFORGE_TOKEN")
             resp = httpx.request(
-                method, f"{self.base_url}{path}", json=body, params=params, timeout=timeout or self.timeout_s
+                method,
+                f"{self.base_url}{path}",
+                json=body,
+                params=params,
+                timeout=timeout or self.timeout_s,
+                headers={"Authorization": f"Bearer {token}"} if token else None,
             )
         except httpx.HTTPError as exc:
             raise TrueForgeError(f"TrueForge unreachable at {self.base_url}: {type(exc).__name__}") from exc
@@ -306,6 +314,63 @@ class TrueForge:
         if sandbox.get("enabled") is not False or manifest.get("skills"):
             raise TrueForgeError(f"agent '{READ_ONLY_AGENT_NAME}' must have sandbox and skills disabled")
         return list(tools)
+
+    def upsert_read_only_schedule(
+        self,
+        *,
+        name: str,
+        cron: str,
+        timezone: str,
+        task: str,
+        agent_name: str = READ_ONLY_AGENT_NAME,
+        activate: bool = False,
+        sdk_factory: Any = TrueForgeSDK,
+    ) -> dict[str, str]:
+        """Create/update a schedule only after confirming its target is the observation-only agent."""
+        for label, value in (("schedule name", name), ("cron", cron), ("timezone", timezone), ("task", task)):
+            if not value.strip():
+                raise TrueForgeError(f"TrueForge schedule {label} must not be empty")
+        if len(cron.split()) != 5:
+            raise TrueForgeError("TrueForge schedule cron must be a standard five-field expression")
+        self.validate_read_only_agent(self.get_agent(agent_name))
+
+        try:
+            sdk = sdk_factory(
+                base_url=self.base_url,
+                token=os.environ.get("TRUEFORGE_TOKEN") or None,
+                timeout=max(self.timeout_s, 600),
+            )
+            status = "active" if activate else "paused"
+            manifest = ScheduleManifest(cron=cron, timezone=timezone, task=task, status=status)
+            matching = [schedule for schedule in sdk.schedules.list() if schedule.name == name]
+            if len(matching) > 1:
+                raise TrueForgeError(f"multiple TrueForge schedules use the configured name '{name}'")
+            if matching:
+                existing = matching[0]
+                if existing.agent_name != agent_name:
+                    raise TrueForgeError(f"schedule '{name}' belongs to a different agent; refusing to replace it")
+                result = sdk.schedules.update(
+                    schedule_id=existing.id,
+                    name=name,
+                    manifest=manifest,
+                )
+                operation = "updated"
+            else:
+                result = sdk.schedules.create(agent_name=agent_name, name=name, manifest=manifest)
+                operation = "created"
+        except TrueForgeError:
+            raise
+        except Exception as exc:
+            raise TrueForgeError(f"TrueForge schedule API failed: {type(exc).__name__}: {exc}") from exc
+
+        schedule = getattr(result, "data", result)
+        return {
+            "operation": operation,
+            "id": str(schedule.id),
+            "name": str(schedule.name),
+            "agent_name": str(schedule.agent_name),
+            "status": status,
+        }
 
     # ------------------------------------------------------------------ attestation
     def session_events(self, session_id: str, max_pages: int = 20) -> list[dict[str, Any]]:

@@ -99,6 +99,19 @@ def cmd_deploy(ops: Ops, service: str, version: str) -> int:
     return 1
 
 
+def cmd_trigger_incident(ops: Ops, scenario_name: str) -> int:
+    scenarios = ops.settings.incidents["scenarios"]
+    scenario = scenarios.get(scenario_name)
+    if scenario is None:
+        raise ToolError(
+            "UNKNOWN_INCIDENT_SCENARIO",
+            f"'{scenario_name}' is not configured",
+            known_scenarios=sorted(scenarios),
+        )
+    print(f"release pipeline: {scenario['title']} (scenario={scenario_name})")
+    return cmd_deploy(ops, scenario["service"], scenario["version"])
+
+
 def cmd_reset(ops: Ops) -> int:
     baseline = _baseline_version(ops)
     for v in ops.catalog.versions(VERSIONED):
@@ -126,9 +139,18 @@ def cmd_status(ops: Ops) -> int:
 
 def _check_once(ops: Ops, expect: str) -> tuple[bool, dict]:
     gw = ops.catalog.instance("api-gateway")
-    synth = asyncio.run(run_checkout_probes(gw.base_url or "", 10, 5))
-    err = ops._scalar("checkout_error_rate", "30s")
-    rps = ops._scalar("checkout_request_rate", "30s")
+    recovery = ops.settings.verification["recovery"]
+    window = recovery["metric_window"]
+    synth = asyncio.run(
+        run_checkout_probes(
+            gw.base_url or "",
+            int(recovery["synthetic_requests"]),
+            float(ops.settings.verification["synthetic"]["timeout_seconds"]),
+        )
+    )
+    err = ops._scalar("checkout_error_rate", window)
+    latency = ops._scalar("checkout_latency_p95", window)
+    rps = ops._scalar("checkout_request_rate", window)
     firing = [a["alert"] for a in ops._alerts() if a["state"] == "firing"]
     samples = ops.prom.scalar('count_over_time(up{job="api-gateway"}[10m])') or 0
     history_s = samples * SCRAPE_INTERVAL_S
@@ -136,8 +158,9 @@ def _check_once(ops: Ops, expect: str) -> tuple[bool, dict]:
         "metrics_history_seconds": history_s,
         "active_version": ops.deploy.active_version(VERSIONED),
         "synthetic_success_ratio": synth["success_ratio"],
-        "checkout_error_rate_30s": err,
-        "checkout_rps_30s": rps,
+        f"checkout_error_rate_{window}": err,
+        f"checkout_latency_p95_{window}": latency,
+        f"checkout_rps_{window}": rps,
         "firing_alerts": firing,
     }
     if expect == "healthy":
@@ -149,7 +172,8 @@ def _check_once(ops: Ops, expect: str) -> tuple[bool, dict]:
             and history_s >= MIN_BASELINE_S
         )
     else:
-        passed = synth["success_ratio"] <= 0.5 and err is not None and err >= 0.2 and "CheckoutErrorRateHigh" in firing
+        # Incident shapes vary; treat any firing alert from the configured rules as observable.
+        passed = bool(firing)
     return passed, facts
 
 
@@ -342,6 +366,37 @@ def cmd_investigator_preflight() -> int:
     return 0
 
 
+def cmd_trueforge_schedule_setup(*, activate: bool = False) -> int:
+    env = os.environ
+    required = {
+        "TRUEFORGE_SCHEDULE_NAME": env.get("TRUEFORGE_SCHEDULE_NAME", ""),
+        "TRUEFORGE_SCHEDULE_CRON": env.get("TRUEFORGE_SCHEDULE_CRON", ""),
+        "TRUEFORGE_SCHEDULE_TIMEZONE": env.get("TRUEFORGE_SCHEDULE_TIMEZONE", ""),
+        "TRUEFORGE_SCHEDULE_TASK": env.get("TRUEFORGE_SCHEDULE_TASK", ""),
+    }
+    missing = [name for name, value in required.items() if not value.strip()]
+    if missing:
+        print("Missing required schedule configuration: " + ", ".join(missing), file=sys.stderr)
+        return 2
+    agent_name = env.get("TRUEFORGE_SCHEDULE_AGENT") or READ_ONLY_AGENT_NAME
+    try:
+        result = from_env().upsert_read_only_schedule(
+            name=required["TRUEFORGE_SCHEDULE_NAME"],
+            cron=required["TRUEFORGE_SCHEDULE_CRON"],
+            timezone=required["TRUEFORGE_SCHEDULE_TIMEZONE"],
+            task=required["TRUEFORGE_SCHEDULE_TASK"],
+            agent_name=agent_name,
+            activate=activate,
+        )
+    except TrueForgeError as exc:
+        print(f"ERROR TrueForge schedule: {exc}", file=sys.stderr)
+        return 2
+    print("schedule={operation} name={name} agent={agent_name} status={status} id={id}".format(**result))
+    if not activate:
+        print("schedule is paused; pass --activate only after reviewing the task and cadence")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="forgesre")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -349,6 +404,8 @@ def main(argv: list[str] | None = None) -> int:
     d = sub.add_parser("deploy")
     d.add_argument("service")
     d.add_argument("version")
+    incident = sub.add_parser("trigger-incident", help="deploy the configured release for a demo incident scenario")
+    incident.add_argument("scenario", nargs="?")
     sub.add_parser("reset")
     sub.add_parser("status")
     c = sub.add_parser("check")
@@ -364,6 +421,10 @@ def main(argv: list[str] | None = None) -> int:
     inv = sub.add_parser("investigate", help="run a read-only incident investigation through TrueForge")
     inv.add_argument("--prompt", required=True)
     sub.add_parser("investigator-preflight", help="verify saved investigator and observation-only tool list")
+    schedule = sub.add_parser(
+        "trueforge-schedule-setup", help="create/update a paused schedule for the read-only investigator"
+    )
+    schedule.add_argument("--activate", action="store_true", help="explicitly activate recurring read-only runs")
     a = sub.add_parser("agent-run")
     a.add_argument("--prompt", required=True)
     g = a.add_mutually_exclusive_group()
@@ -386,12 +447,16 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_investigate(args.prompt)
     if args.cmd == "investigator-preflight":
         return cmd_investigator_preflight()
+    if args.cmd == "trueforge-schedule-setup":
+        return cmd_trueforge_schedule_setup(activate=args.activate)
     ops = Ops(get_settings())
     try:
         if args.cmd == "init-state":
             return cmd_init_state(ops)
         if args.cmd == "deploy":
             return cmd_deploy(ops, args.service, args.version)
+        if args.cmd == "trigger-incident":
+            return cmd_trigger_incident(ops, args.scenario or ops.settings.incidents["default_scenario"])
         if args.cmd == "reset":
             return cmd_reset(ops)
         if args.cmd == "status":

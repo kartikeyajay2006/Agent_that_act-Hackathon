@@ -14,7 +14,7 @@ A tool that succeeds has not fixed the incident. Only `verify_recovery` decides 
    healthy too, **there is no incident: say so with the numbers and stop. Take no action.**
 2. **Investigate** (one call per question, no repeats):
    - `get_service_health` for `api-gateway` and `payment-service`
-   - `query_metrics` for `checkout_error_rate`, `checkout_errors_by_reason`, `db_pool_utilization`
+   - `query_metrics` for `checkout_error_rate`, `checkout_latency_p95`, `checkout_errors_by_reason`, `db_pool_utilization`
    - `get_service_logs` for `payment-service` with `level="ERROR"`, `since_minutes=10` (read `event_counts`)
    - `get_recent_deployments` for `payment-service`
    - `get_database_health`
@@ -47,13 +47,16 @@ A tool that succeeds has not fixed the incident. Only `verify_recovery` decides 
    ev["window"]                 -> {"start_unix", "end_unix", "step_seconds"}
    ```
 
-   Compute and print: incident start (first `checkout_error_rate` point > 0.05) and the mean before it; peak error rate
-   after; seconds from the most recent deployment to the start; failures per `upstream_version`; max
-   `db_pool_utilization` per version after the start; the most frequent ERROR event per instance. Never type a
-   conclusion or a number into the script. If a value is missing, print `null`.
+   Compute and print: the first material change visible in the alerted signal series (error rate or latency p95),
+   its pre-change baseline and post-change peak; seconds from the most recent deployment to the change; failures per
+   `upstream_version`; max `db_pool_utilization` per version; and the most frequent ERROR event per instance. Use
+   the firing alert and values returned by tools as the incident criteria; do not invent or hard-code thresholds in
+   the script. Never type a conclusion or a number into the script. If a value is missing, print `null`.
 
    Then cross-check with the reference analyzer: {{DIAGNOSTICS_SOURCE}}
-   Say where your script and the analyzer agree, and quote the analyzer's `evidence_score`.
+   Say where your script and the analyzer agree, and quote the analyzer's `evidence_score` when present. The reference
+   analyzer focuses on error/pool-pressure incidents; for a latency-only incident, report that limitation and use the
+   collected latency series and deployment/log evidence as the primary analysis.
 4. **Hypothesis.** One sentence, then at least three independent pieces of evidence with numbers from the tools
    (metrics, resource saturation, logs, deployment timing, sandbox result) and a confidence (LOW / MEDIUM / HIGH).
 5. **Safe action first.** `assess_action_risk(action="restart_service", service=<instance>)`, then

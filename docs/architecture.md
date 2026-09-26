@@ -94,7 +94,7 @@ flowchart LR
 | ForgeSRE MCP server | Python 3.11+, official `mcp` SDK v2 (`MCPServer`), Starlette/uvicorn | `:18900/mcp` | Tool surface, policy, attestation, audit, dashboard |
 | Mission control | Static HTML + `/api/state` | `:18900/dashboard` | Read-only view of health, signals, loop phase, approval banner |
 | api-gateway | FastAPI + httpx | `:18080` | Public `/checkout`; routes to the version named in `state/deployment.json` |
-| payment-service v1 / v2 | FastAPI + psycopg pool | `:18101` / `:18102` | Writes payments to PostgreSQL; v2 is the faulty release |
+| payment-service v1 / v2 / v3 | FastAPI + psycopg pool | `:18101` / `:18102` / `:18103` | Writes payments to PostgreSQL; v2 models pool pressure and v3 models processor latency |
 | PostgreSQL 16 | `max_connections=100`, `reserved_connections=3` | `:15432` | Payments DB; `forgesre_monitor` role (pg_monitor) for the MCP server |
 | postgres-exporter | Prometheus community image | internal | `pg_stat_activity_count`, `pg_settings_max_connections` |
 | Prometheus 3 | 2 s scrape, 5 s rule eval | `:19090` | Metrics and three symptom alerts |
@@ -251,7 +251,8 @@ the safe action fails verification. Nothing in tools, metadata or commit message
 
 **Deployment control** (`mcp-server/src/forgesre/deployment.py`): `record_switch` takes an `flock`, rewrites the
 state file atomically (tmp + rename) with a history entry, and the gateway picks it up on its next request.
-`scripts/trigger-incident.sh` uses the same code path as the release pipeline ("deploy v2"); the rollback tool uses it
+`scripts/trigger-incident.sh` uses the same code path as the release pipeline, selecting a catalogued release from
+`config/incidents.yaml`; the rollback tool uses it
 in reverse and then stops the previous container to release its connections.
 
 ---

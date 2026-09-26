@@ -75,7 +75,7 @@ Every file, what it does, and where to look when you want to change something. ~
 │   ├── start-trueforge.sh        TrueForge 0.2.1, loopback allowlist, project-local SQLite
 │   ├── setup-trueforge.sh        configure TrueForge (wraps `forgesre trueforge-setup`)
 │   ├── reset-demo.sh             known-good baseline (removes v2, fresh metrics, waits for health)
-│   ├── trigger-incident.sh       release pipeline ships payment-service v2
+│   ├── trigger-incident.sh       deploys a scenario configured in config/incidents.yaml
 │   ├── verify-healthy.sh / verify-incident.sh
 │   ├── run-agent.sh              drive the agent from a terminal (asks you to Allow/Deny)
 │   ├── rehearse.sh               keyless rehearsal: scripted stand-in model, you click Allow/Deny in TrueForge
@@ -97,7 +97,7 @@ Every file, what it does, and where to look when you want to change something. ~
 | change the agent's behaviour | `agent/forgesre.system.md`, then `./scripts/setup-trueforge.sh` |
 | add a tool | `ops.py` (logic) + `server.py` (MCP definition + annotation) + a test in `test_safety.py` |
 | add a metric the agent can query | `prom.py` → `SIGNALS` |
-| change the incident | `demo/payment-v2/app.py` (and `AUDIT_BATCH_SIZE` / pool size in `docker-compose.yml`) |
+| change an incident scenario | `config/incidents.yaml`; scenario-specific service settings are in `docker-compose.yml` |
 | add a service | `docker-compose.yml` + `config/services.yaml` (+ `demo/prometheus/prometheus.yml`) |
 | see what happened in a run | TrueForge session; `artifacts/audit/events.jsonl`; `artifacts/incidents/` |
 | regenerate README images | `uv run --project mcp-server python scripts/dev/capture_showcase.py --clean-sessions` |
@@ -129,7 +129,7 @@ Every file, what it does, and where to look when you want to change something. ~
 | 8790 | TrueForge UI + API |
 | 18900 | ForgeSRE MCP server (`/mcp`, `/dashboard`, `/api/state`, `/healthz`) |
 | 18080 | api-gateway |
-| 18101 / 18102 | payment-service v1 / v2 |
+| 18101 / 18102 / 18103 | payment-service v1 / v2 / v3 |
 | 19090 | Prometheus |
 | 15432 | PostgreSQL |
 | 18990 | scripted test-double model (tests / rehearsal only) |

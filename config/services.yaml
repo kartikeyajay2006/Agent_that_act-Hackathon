@@ -34,6 +34,13 @@ services:
         compose_profile: release-v2
         base_url: http://127.0.0.1:${PAYMENT_V2_HOST_PORT:-18102}
         source_dir: demo/payment-v2
+      v3:
+        instance: payment-service-v3
+        container: forgesre-payment-v3
+        compose_service: payment-v3
+        compose_profile: release-v3
+        base_url: http://127.0.0.1:${PAYMENT_V3_HOST_PORT:-18103}
+        source_dir: demo/payment-v2
 
   postgres:
     description: Primary payments database

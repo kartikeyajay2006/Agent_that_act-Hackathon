@@ -20,7 +20,7 @@ TRUEFORGE_URL="${TRUEFORGE_BASE_URL:-${TRUEFORGE_URL:-http://localhost:${TRUEFOR
 TRUEFORGE_BASE_URL="$TRUEFORGE_URL"
 export TRUEFORGE_URL TRUEFORGE_BASE_URL
 
-COMPOSE=(docker compose -f "$ROOT/docker-compose.yml" --profile release-v2)
+COMPOSE=(docker compose -f "$ROOT/docker-compose.yml" --profile release-v2 --profile release-v3)
 
 say()  { printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$*"; }

@@ -1,0 +1,12 @@
+# Named demo incidents map to catalogued releases; the operator chooses the scenario at trigger time.
+default_scenario: database-pool-pressure
+
+scenarios:
+  database-pool-pressure:
+    title: Checkout failures from database pool pressure
+    service: payment-service
+    version: v2
+  latency-regression:
+    title: Checkout latency regression from processor delay
+    service: payment-service
+    version: v3

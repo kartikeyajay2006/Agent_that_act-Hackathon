@@ -24,7 +24,7 @@ action.
 | Harness doing the work (30) | 20–24 | Real tools, sandbox and the native gate all verified through TrueForge — but only with a scripted test-double model and a 3B local model. **No run with a frontier model yet.** Whether the model writes its own sandbox code on stage is untested. | 26–29 |
 | It actually runs (25) | 15–19 | `up.sh`, `doctor.sh`, rehearsal mode, pinned TrueForge. Tested on **one** Fedora laptop only. Needs Docker, Node ≥ 22.14, uv, and a model key. | 20–23 |
 | Where it stops (20) | 17–19 | Two-layer gate (TrueForge + attestation), single-use approvals, allowlists, rate limit, no shell. Deny path proven. | 18–20 |
-| Job worth handing over (15) | 11–13 | Incident response is real, repetitive, time-critical toil. Only one incident type. | 12–14 |
+| Job worth handing over (15) | 11–13 | Incident response is real, repetitive, time-critical toil. Two scenarios are configured, but the alternate still needs an end-to-end rehearsal. | 12–14 |
 | Demo clarity (10) | 0–4 | Runbook and screenshots exist; **no video recorded**. | 8–10 |
 | **Total** | **~63–79** | | **~84–96** |
 
@@ -44,11 +44,11 @@ action.
 | Task | Gain | Effort |
 |---|---|---|
 | Daytona key (`DAYTONA_API_KEY`) so the sandbox is the provider TrueForge documents, and the skill attaches | Stronger "harness" story; removes the Fedora/bwrap caveat | 15 min |
-| Shorter verification for the live demo: `settle_seconds: 20`, `metric_window: 20s` in `config/verification.yaml` | Two verifications currently add ~60 s of waiting to a 5-minute demo | 5 min + rehearse |
-| Pick a fast model (e.g. a Sonnet/"flash" class) for stage; keep a pre-recorded run as backup | Venue Wi-Fi and model latency are the biggest live risks | 10 min |
-| A second incident type (e.g. bad config or memory growth) using the same tools | "Is it a one-trick demo?" objection; 15-pt criterion | 2–3 h |
-| Trigger from a schedule or webhook instead of a typed prompt (TrueForge schedules) | Looks like real on-call, not a chat | 1 h |
-| Build-story write-up from `docs/implementation.md` → "Problems found while building" | Separate community prize for best build story | 30 min |
+| Shorter verification for the live demo: `settle_seconds: 20`, `metric_window: 20s` in `config/verification.yaml` | Reduces the configured settling delay for two verification passes from ~60 s to ~40 s | Configured; rehearse within the 5-minute demo |
+| Pick a fast model from the configured provider's live catalog for stage; keep a pre-recorded run as backup (see `docs/stage-model.md`) | Venue Wi-Fi and model latency are the biggest live risks; model ID and credentials stay in ignored `.env`, not code | Choose and validate the model, then capture/review a credential-free backup |
+| Add a second incident type using the same tools: configurable processor-latency regression (see `config/incidents.yaml` and `docs/demo.md`) | Demonstrates diagnosis beyond database pool pressure without adding another tool surface | Implemented; end-to-end rehearsal still needed |
+| Trigger from a schedule or webhook instead of a typed prompt (TrueForge schedules) | Looks like real on-call, not a chat | Configurable paused schedule implemented; activation and rehearsal still needed |
+| Build-story write-up from `docs/implementation.md` → "Problems found while building" | Separate community prize for best build story | Evidence-backed draft added; team voice/review still needed |
 
 ## Things we should not claim
 

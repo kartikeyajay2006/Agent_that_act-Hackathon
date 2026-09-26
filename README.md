@@ -34,7 +34,7 @@
 
 | | |
 |---|---|
-| **The job** | First response to a production incident: checkout is failing and someone has to find out why and fix it, now. |
+| **The job** | First response to production incidents: database pool pressure or processor-latency regression, with evidence-driven diagnosis and safe recovery. |
 | **What the agent does** | Reads alerts, metrics, logs, deploy history and the database; **writes and runs a diagnostic in the TrueForge sandbox**; forms a hypothesis with evidence; tries the safe fix; **verifies it** — and when the safe fix doesn't work, goes back to the evidence. |
 | **Where it stops** | Before a production rollback. TrueForge holds the call and shows a human the exact arguments. Our server refuses to act unless TrueForge's own record shows that person allowed *this exact* call. |
 | **How it proves it worked** | `verify_recovery` checks readiness, 20 synthetic checkouts, error rate, p95 and database load against thresholds in config. "Looks fixed" is not a verdict. |
@@ -142,13 +142,12 @@ git clone https://github.com/kartikeyajay2006/Agent_that_act-Hackathon.git forge
 ./scripts/setup.sh        # checks prerequisites, creates .env with random secrets, builds images
 ```
 
-Open `.env` and set your model (IDs come from TrueForge's catalog — `setup-trueforge.sh` validates them):
+Open `.env` and choose a low-latency, tool-capable model from the configured provider's current catalog. Set
+`MODEL_PROVIDER`, `MODEL_ID`, and `MODEL_API_KEY` (plus `MODEL_BASE_URL` when required); `setup-trueforge.sh` validates
+that the model is visible through TrueForge. Model selection is environment-driven rather than pinned in application
+code. See the [stage model and offline backup runbook](docs/stage-model.md).
 
-```bash
-MODEL_PROVIDER=anthropic          # or openai, google-gemini, truefoundry, custom, …
-MODEL_ID=claude-sonnet-5
-MODEL_API_KEY=sk-...
-```
+Keep model credentials in `.env`; never commit them or put them in a recording.
 
 ### Read-only investigation milestone
 
@@ -158,6 +157,17 @@ no sandbox, probes, restart, or rollback tools. TrueForge `0.2.1` exposes only U
 stdio. Setup reads the installed OpenAPI schema and refuses loopback registration instead of weakening outbound
 protections. For a deployment with an approved reachable MCP endpoint, set `FORGESRE_MCP_URL` to its HTTPS `/mcp`
 URL. Do not publish the local development server just to bypass the policy.
+
+### Scheduled read-only on-call investigation
+
+TrueForge schedules can run the saved investigator unattended. Configure `TRUEFORGE_SCHEDULE_NAME`,
+`TRUEFORGE_SCHEDULE_CRON`, `TRUEFORGE_SCHEDULE_TIMEZONE`, and `TRUEFORGE_SCHEDULE_TASK` in your ignored local `.env`;
+the agent defaults to the saved read-only profile, and any explicitly selected agent is checked against its exact
+observation-only tool allowlist. Cron is a standard five-field expression and TrueForge enforces a minimum one-hour
+interval. No schedule is created by setup. Run `./scripts/setup-investigation-schedule.sh` to create or update it in
+the **paused** state, then inspect the task, cadence, and agent in TrueForge. Only after that review, pass
+`--activate` to explicitly enable recurring runs. Each run is visible as a session in TrueForge; approval-required
+events are not answered by this integration, and the scheduled investigator has no remediation tools.
 
 For an approved, TrueForge-reachable MCP URL configured in `FORGESRE_MCP_URL`, one command brings the components up.
 TrueForge 0.2.1 has no stdio transport, so the default local loopback URL intentionally fails setup preflight before
@@ -176,7 +186,8 @@ any provider or MCP settings are written:
 ### Run the incident
 
 ```bash
-./scripts/trigger-incident.sh     # the release pipeline ships payment-service v2
+./scripts/trigger-incident.sh     # the configured default scenario from config/incidents.yaml
+./scripts/trigger-incident.sh latency-regression  # alternate processor-latency scenario
 ./scripts/verify-incident.sh      # waits until the incident is observable (~20 s)
 ```
 
@@ -244,7 +255,7 @@ Run them yourself: [docs/implementation.md → How it was verified](docs/impleme
 ```text
 agent/          instructions TrueForge runs · setup guide · demo prompts
 config/         services · policy (who may do what) · verification thresholds
-demo/           the production system: gateway, payment v1/v2, Postgres, Prometheus, traffic
+demo/           the production system: gateway, payment v1/v2/v3, Postgres, Prometheus, traffic
 mcp-server/     the ForgeSRE MCP server (Python) + tests
 skills/         incident-diagnostics skill (reference analyzer for the sandbox)
 scripts/        up · doctor · setup · reset · trigger · verify · rehearse · run-agent
@@ -268,7 +279,7 @@ Full file-by-file map: [docs/map.md](docs/map.md).
 
 - **No end-to-end run with a frontier model yet** — none was available while building. Every mechanism the model
   relies on is verified through TrueForge (see *Verified*); rehearse with your key before a live demo.
-- One incident scenario and one versioned service; Docker Compose, not Kubernetes.
+- Two configured incident scenarios and one versioned service; the latency scenario still needs an end-to-end rehearsal. Docker Compose, not Kubernetes.
 - Tested on Linux (Fedora). macOS should work (Docker Desktop, TrueForge's macOS sandbox); Windows needs WSL2.
 - TrueForge local mode has no login; keep it on localhost. The approval attestation reads TrueForge's local API.
 - On Fedora/RHEL, TrueForge's local sandbox can't clone git skills, so the analyzer is delivered through the MCP bridge
@@ -276,6 +287,10 @@ Full file-by-file map: [docs/map.md](docs/map.md).
 
 ## AI assistance
 
-As the hackathon rules require: this project was built with the help of an AI coding assistant (Claude Code), which
-was used for implementation, tests and documentation under the team's direction. The design decisions, the demo and
-the submission are the team's own, and the team can explain every part of the architecture.
+As the hackathon rules require: AI coding assistants (Claude Code and OpenAI Codex) were used for implementation,
+tests, and documentation under the team's direction. The design decisions, the demo, and the submission are the
+team's own, and the team can explain every part of the architecture.
+
+## Contributors
+
+- [@ankit25bcs10610](https://github.com/ankit25bcs10610)
