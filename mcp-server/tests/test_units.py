@@ -243,12 +243,17 @@ def test_args_match_requires_every_key():
 
 def _fake_trueforge(decision: str) -> TrueForge:
     tf = TrueForge("http://trueforge.invalid")
-    events = [
-        *EVENTS,
-        {"type": "user.tool_approval", "id": "ev9", "tool_call_id": "call_1", "approval": {"status": decision}},
+    turns = [
+        {"id": "turn1", "input": [{"type": "user.message", "content": "go"}]},
+        {
+            "id": "turn2",
+            "created_at": "2026-09-26T06:38:26Z",
+            "input": [{"type": "user.tool_approval", "tool_call_id": "call_1", "approval": {"status": decision}}],
+        },
     ]
     tf._req = lambda method, path, body=None, params=None: {"data": [{"id": "sess1"}]}  # type: ignore[method-assign]
-    tf.session_events = lambda sid, max_pages=20: events  # type: ignore[method-assign]
+    tf.session_events = lambda sid, max_pages=20: EVENTS  # type: ignore[method-assign]
+    tf.session_turns = lambda sid, max_pages=10: turns  # type: ignore[method-assign]
     return tf
 
 

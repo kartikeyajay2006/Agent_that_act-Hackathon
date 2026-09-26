@@ -31,8 +31,8 @@ packages = ["src/forgesre"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not integration'"
-markers = ["integration: needs the running docker demo stack"]
+addopts = "-m 'not integration and not trueforge'"
+markers = ["integration: needs the running docker demo stack", "trueforge: needs TrueForge + a configured model"]
 
 [tool.ruff]
 line-length = 120

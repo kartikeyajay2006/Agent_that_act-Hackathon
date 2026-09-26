@@ -21,6 +21,7 @@ import httpx
 AGENT_NAME = "forgesre"
 MCP_SERVER_NAME = "forgesre"
 APPROVAL_GATED_TOOLS = ["rollback_deployment", "@destructive"]
+SKILL_NAME = "incident-diagnostics"
 
 
 class TrueForgeError(RuntimeError):
@@ -112,7 +113,22 @@ class TrueForge:
         manifest = {**preset, "auth": {"api_key": api_key}}
         self._req("PUT", "/api/v1/settings/sandbox-providers", {"manifest": manifest})
 
-    def agent_manifest(self, *, model_fqn: str, instructions: str) -> dict[str, Any]:
+    def configure_skill(self, *, repo_url: str, ref: str, path: str) -> None:
+        manifest = {
+            "type": "git",
+            "name": SKILL_NAME,
+            "url": repo_url,
+            "ref": ref,
+            "path": path,
+            "description": "Evidence-driven incident diagnosis in the sandbox: computes incident start, failing "
+            "version, deployment timing, saturation, log signatures, restart effect and an evidence score.",
+        }
+        existing = [
+            k.get("manifest", k).get("name") for k in self._req("GET", "/api/v1/settings/skills").get("data", [])
+        ]
+        self._req("PUT" if SKILL_NAME in existing else "POST", "/api/v1/settings/skills", {"manifest": manifest})
+
+    def agent_manifest(self, *, model_fqn: str, instructions: str, with_skill: bool = False) -> dict[str, Any]:
         return {
             "model": {"name": model_fqn, "params": {"temperature": 0.1}},
             "instructions": instructions,
@@ -124,6 +140,7 @@ class TrueForge:
                     "preload": True,
                 }
             ],
+            "skills": [{"name": SKILL_NAME}] if with_skill else [],
             "config": {
                 "sandbox": {"enabled": True},
                 "generative_ui": {"enabled": False},
@@ -165,6 +182,31 @@ class TrueForge:
                 break
         return events[::-1]
 
+    def session_turns(self, session_id: str, max_pages: int = 10) -> list[dict[str, Any]]:
+        turns: list[dict[str, Any]] = []
+        token: str | None = None
+        for _ in range(max_pages):
+            params: dict[str, Any] = {"limit": 25}
+            if token:
+                params["page_token"] = token
+            page = self._req("GET", f"/api/v1/sessions/{session_id}/turns", params=params)
+            turns.extend(page.get("data", []))
+            token = (page.get("pagination") or {}).get("next_page_token")
+            if not token:
+                break
+        return turns
+
+    def approvals(self, session_id: str, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Human approval decisions: the resuming turn's user.tool_approval inputs (and any such events)."""
+        found = [
+            {**item, "created_at": turn.get("created_at"), "turn_id": turn.get("id")}
+            for turn in self.session_turns(session_id)
+            for item in turn.get("input") or []
+            if item.get("type") == "user.tool_approval"
+        ]
+        found += [e for e in events if e.get("type") == "user.tool_approval"]
+        return found
+
     def find_approval(self, *, tool: str, arguments: dict[str, Any], within_minutes: int = 30) -> dict[str, Any] | None:
         """Find a TrueForge tool call to `tool` with matching arguments that a human approved."""
         since = datetime.now(UTC) - timedelta(minutes=within_minutes)
@@ -174,18 +216,18 @@ class TrueForge:
         for s in sessions:
             events = self.session_events(s["id"])
             calls = {c["id"]: c for c in _tool_calls(events, tool)}
-            for e in events:
-                if e.get("type") != "user.tool_approval":
-                    continue
-                call = calls.get(e.get("tool_call_id", ""))
-                if not call or (e.get("approval") or {}).get("status") != "allow":
+            if not calls:
+                continue
+            for decision in self.approvals(s["id"], events):
+                call = calls.get(decision.get("tool_call_id", ""))
+                if not call or (decision.get("approval") or {}).get("status") != "allow":
                     continue
                 if _args_match(call.get("arguments"), arguments):
                     return {
                         "session_id": s["id"],
                         "tool_call_id": call["id"],
-                        "approval_event_id": e.get("id"),
-                        "approved_at": e.get("created_at"),
+                        "approval_turn_id": decision.get("turn_id") or decision.get("id"),
+                        "approved_at": decision.get("created_at"),
                     }
         return None
 

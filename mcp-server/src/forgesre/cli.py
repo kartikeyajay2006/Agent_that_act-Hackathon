@@ -22,7 +22,7 @@ from .ops import VERSIONED, Ops
 from .probes import probe, wait_ready
 from .results import ToolError
 from .synthetic import run_checkout_probes
-from .trueforge import AGENT_NAME, APPROVAL_GATED_TOOLS, MCP_SERVER_NAME, TrueForgeError, from_env
+from .trueforge import AGENT_NAME, APPROVAL_GATED_TOOLS, MCP_SERVER_NAME, SKILL_NAME, TrueForgeError, from_env
 
 SCRAPE_INTERVAL_S = 2
 MIN_BASELINE_S = 45
@@ -194,8 +194,20 @@ def cmd_trueforge_setup(ops: Ops) -> int:
     else:
         print("sandbox provider: TrueForge local sandbox (standalone mode)")
 
+    with_skill = False
+    repo = env.get("FORGESRE_SKILL_REPO", "https://github.com/kartikeyajay2006/Agent_that_act-Hackathon")
+    if repo:
+        try:
+            tf.configure_skill(
+                repo_url=repo, ref=env.get("FORGESRE_SKILL_REF", "main"), path="skills/incident-diagnostics"
+            )
+            with_skill = True
+            print(f"skill '{SKILL_NAME}' registered from {repo}")
+        except TrueForgeError as exc:
+            print(f"WARNING: skill not registered ({exc}); the agent will write its own diagnostic script")
+
     instructions = (ops.settings.root / "agent" / "forgesre.system.md").read_text()
-    agent = tf.upsert_agent(tf.agent_manifest(model_fqn=fqn, instructions=instructions))
+    agent = tf.upsert_agent(tf.agent_manifest(model_fqn=fqn, instructions=instructions, with_skill=with_skill))
     print(f"agent '{AGENT_NAME}' saved (id {agent.get('id')}); approval required for {APPROVAL_GATED_TOOLS}")
     print(f"open {tf.base_url} -> Agents -> {AGENT_NAME} -> Try")
     return 0
