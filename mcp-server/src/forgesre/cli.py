@@ -23,7 +23,15 @@ from .ops import VERSIONED, Ops
 from .probes import probe, wait_ready
 from .results import ToolError
 from .synthetic import run_checkout_probes
-from .trueforge import AGENT_NAME, APPROVAL_GATED_TOOLS, MCP_SERVER_NAME, SKILL_NAME, TrueForgeError, from_env
+from .trueforge import (
+    AGENT_NAME,
+    APPROVAL_GATED_TOOLS,
+    MCP_SERVER_NAME,
+    SKILL_NAME,
+    TrueForgeError,
+    from_env,
+    model_params,
+)
 
 SCRAPE_INTERVAL_S = 2
 MIN_BASELINE_S = 45
@@ -199,7 +207,13 @@ def cmd_trueforge_setup(ops: Ops) -> int:
     fqn = tf.configure_model(
         provider=provider, model_id=model_id, api_key=api_key, base_url=env.get("MODEL_BASE_URL") or None
     )
-    print(f"model provider configured: {fqn}")
+    print(f"agent model: {fqn}  params {model_params(fqn)}")
+
+    # Optional second provider (e.g. your own OpenAI key) so the model can be switched in the TrueForge UI.
+    if env.get("OPENAI_API_KEY") and provider != "openai":
+        ids = [m.strip() for m in env.get("OPENAI_MODEL_IDS", "gpt-4.1-mini").split(",") if m.strip()]
+        extra = tf.configure_provider(provider="openai", model_ids=ids, api_key=env["OPENAI_API_KEY"], base_url=None)
+        print(f"fallback provider: openai {extra} (selectable in the TrueForge model picker)")
 
     mcp_url = f"http://{ops.settings.mcp_host}:{ops.settings.mcp_port}/mcp"
     tf.configure_mcp(url=mcp_url, token=token)
@@ -208,15 +222,24 @@ def cmd_trueforge_setup(ops: Ops) -> int:
     gated = [t.get("name") for t in tools if (t.get("annotations") or {}).get("destructiveHint")]
     print(f"  destructive per annotations: {gated}")
 
+    daytona = False
     if env.get("DAYTONA_API_KEY"):
-        tf.configure_daytona(env["DAYTONA_API_KEY"])
-        print("sandbox provider: Daytona configured")
-    else:
+        if tf.sandbox_provider() != "daytona":
+            print("sandbox provider: configuring Daytona (first time builds a snapshot; can take a few minutes)…")
+        try:
+            tf.configure_daytona(env["DAYTONA_API_KEY"])
+            daytona = True
+            print("sandbox provider: Daytona configured")
+        except TrueForgeError as exc:
+            print(f"WARNING: Daytona not configured — {exc}")
+            print("         falling back to TrueForge's local sandbox (fix the key's permissions and re-run)")
+    if not daytona:
         print("sandbox provider: TrueForge local sandbox (standalone mode)")
+    env_for_skill = dict(env) if daytona else {k: v for k, v in env.items() if k != "DAYTONA_API_KEY"}
 
     repo = env.get("FORGESRE_SKILL_REPO", "https://github.com/kartikeyajay2006/Agent_that_act-Hackathon")
     ref = env.get("FORGESRE_SKILL_REF", "main")
-    with_skill = _skill_can_install(env)
+    with_skill = _skill_can_install(env_for_skill)
     if with_skill:
         try:
             tf.configure_skill(repo_url=repo, ref=ref, path="skills/incident-diagnostics")
@@ -259,12 +282,23 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--expect", choices=["healthy", "incident"], required=True)
     c.add_argument("--timeout", type=int, default=120)
     sub.add_parser("trueforge-setup")
+    e = sub.add_parser("eval", help="score the agent on scenarios through TrueForge")
+    e.add_argument("--scenario", default="approve,deny,healthy", help="comma list: approve, deny, healthy")
+    e.add_argument("--runs", type=int, default=1)
     a = sub.add_parser("agent-run")
     a.add_argument("--prompt", required=True)
     g = a.add_mutually_exclusive_group()
     g.add_argument("--approve", action="store_true", help="approve approval-gated calls (testing)")
     g.add_argument("--deny", action="store_true", help="deny approval-gated calls (testing)")
     args = parser.parse_args(argv)
+    if args.cmd == "eval":
+        from .evaluate import main as run_eval
+
+        scenarios = [x.strip() for x in args.scenario.split(",") if x.strip()]
+        bad = [x for x in scenarios if x not in ("approve", "deny", "healthy")]
+        if bad:
+            parser.error(f"unknown scenario(s): {bad}")
+        return run_eval(get_settings(), scenarios, args.runs)
     if args.cmd == "agent-run":
         from .agent_driver import main as run_agent
 

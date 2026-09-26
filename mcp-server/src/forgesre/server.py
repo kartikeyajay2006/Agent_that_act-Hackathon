@@ -194,7 +194,11 @@ async def collect_incident_evidence(
     """Machine-readable evidence bundle for diagnostic analysis in the sandbox: aligned time series
     (unix ts, value) for checkout error rate / latency / traffic by version / errors by reason / pool and
     PostgreSQL connections, log event counts per 10s bucket per instance, deployments, container lifecycle,
-    alerts, and prior restart actions. Large: analyse it with code (Code Mode) rather than reading it."""
+    alerts, and prior restart actions. Large: analyse it with code (Code Mode) rather than reading it.
+    Shape: metrics[<signal>] = [{labels, points: [[unix_ts, value|null], ...]}]; deployments = [{version,
+    previous_version, type, deployed_at}]; log_event_totals = [{instance, level, event, count, first_seen,
+    last_seen}]; log_event_counts[instance][event] = [[bucket_ts, count]]; window = {start_unix, end_unix,
+    step_seconds}; container_lifecycle[instance]; alerts; restart_actions."""
     return await _call(
         "collect_incident_evidence", lambda: ops.collect_evidence(window_minutes), {"window_minutes": window_minutes}
     )

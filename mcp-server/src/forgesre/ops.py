@@ -707,6 +707,7 @@ class Ops:
         verdict = "RECOVERED" if recovered else "NOT_RECOVERED"
         result = {
             "verdict": verdict,
+            "remediation_options": [] if recovered else await asyncio.to_thread(self._remediation_options, active),
             "criteria": criteria,
             "failed_criteria": [c["criterion"] for c in criteria if not c["passed"]],
             "active_version": active,
@@ -720,6 +721,51 @@ class Ops:
         if recovered:
             self.audit.update_incident(verified_recovered_at=now_iso())
         return ok(**result)
+
+    def _remediation_options(self, active: str | None) -> list[dict[str, Any]]:
+        """Objective facts about the remaining options. The agent decides; the RED one still needs a human."""
+        options: list[dict[str, Any]] = []
+        if not active:
+            return options
+        inst = self.catalog.instance_for_version(VERSIONED, active)
+        policy = self.settings.action_policy("restart_service")
+        used = self._recent_restarts(inst.name, int(policy.get("window_minutes", 10)))
+        options.append(
+            {
+                "action": "restart_service",
+                "class": "YELLOW",
+                "target": inst.name,
+                "restarts_in_window": used,
+                "budget_left": max(0, int(policy.get("max_per_target_per_window", 2)) - used),
+                "note": "a restart that already failed verification is unlikely to help twice" if used else "",
+            }
+        )
+        history = self.deploy.history(VERSIONED, 20)
+        current = next((h for h in history if h.get("status") == "active"), None)
+        previous = current.get("previous_version") if current else None
+        if previous and previous != active:
+            target = self.catalog.instance_for_version(VERSIONED, previous)
+            state = self.docker.state(target)
+            ready = probe(target, "/ready", timeout_s=1.5).get("ok") if state.get("running") else None
+            inc = self.audit.incident() or {}
+            since = None
+            if current and inc.get("opened_at"):
+                opened = datetime.fromisoformat(inc["opened_at"]).timestamp()
+                since = round(opened - datetime.fromisoformat(current["deployed_at"]).timestamp(), 1)
+            options.append(
+                {
+                    "action": "rollback_deployment",
+                    "class": "RED — requires human approval in TrueForge",
+                    "service": VERSIONED,
+                    "from_version": active,
+                    "to_version": previous,
+                    "active_version_deployed_at": current.get("deployed_at") if current else None,
+                    "deployed_seconds_before_incident_opened": since,
+                    "target_running": bool(state.get("running")),
+                    "target_ready": ready,
+                }
+            )
+        return options
 
     # ------------------------------------------------------------------ timeline
     def timeline(self) -> dict[str, Any]:
