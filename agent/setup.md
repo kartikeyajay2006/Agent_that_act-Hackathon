@@ -1,7 +1,7 @@
 # Setting up ForgeSRE inside TrueForge
 
-`./scripts/setup-trueforge.sh` does all of this through TrueForge's HTTP API and is safe to re-run. This page explains
-what it configures so you can check it in the UI or do it by hand.
+`./scripts/setup-trueforge.sh` configures the read-only investigator by default; `--full` explicitly selects the
+existing action-capable `forgesre` profile. Setup checks the installed TrueForge MCP schema before configuration.
 
 ## 1. Run TrueForge
 
@@ -15,7 +15,7 @@ Runs `npx @truefoundry/trueforge@0.2.1` in local (standalone) mode with:
 |---|---|---|
 | `SQLITE_PATH` | `.trueforge/trueforge.sqlite` | Sessions stay with the project |
 | `PORT` | `8790` | TrueForge default |
-| `OUTBOUND_URL_ALLOWED_HOSTS` | `["127.0.0.1","localhost"]` | TrueForge blocks private hosts by default; the ForgeSRE MCP server listens on 127.0.0.1 |
+| Outbound URL policy | TrueForge defaults | Setup does not add loopback/private hosts to an allowlist |
 
 In standalone mode TrueForge provides a local sandbox (bubblewrap on Linux) when no provider is configured. To use
 Daytona instead, set `DAYTONA_API_KEY` in `.env`; setup configures it under **Settings → Sandbox providers**.
@@ -27,20 +27,32 @@ Daytona instead, set `DAYTONA_API_KEY` in `.env`; setup configures it under **Se
 (`GET /api/v1/catalogs/model-providers`) and registers the provider. Use a strong tool-calling model; the incident
 involves long evidence and multi-step reasoning.
 
-## 3. MCP connector
+## 3. MCP connector and transport support
 
-**Settings → Connectors → Add MCP Server**
+TrueForge 0.2.1's installed OpenAPI schema advertises only `remote` and `truefoundry` URL-backed MCP manifests; it
+does not support stdio/local-command MCP. Setup refuses to register the local loopback URL and leaves settings
+unchanged. Do not add loopback hosts to TrueForge's outbound allowlist.
+
+For a deployment with an approved, TrueForge-reachable MCP service, set `FORGESRE_MCP_URL` to its non-loopback HTTPS
+`/mcp` URL. Bearer auth remains enabled using `FORGESRE_MCP_TOKEN`. Do not expose the development server publicly to
+work around URL protections.
 
 | Field | Value |
 |---|---|
 | Name | `forgesre` |
-| URL | `http://127.0.0.1:18900/mcp` |
+| URL | `FORGESRE_MCP_URL` (approved non-loopback HTTPS endpoint) |
 | Auth | Header `Authorization: Bearer <FORGESRE_MCP_TOKEN from .env>` |
 
-TrueForge should list 17 tools. `rollback_deployment` shows as destructive, `restart_service` as write, the rest as
-read-only.
+After the endpoint is reachable, TrueForge should list its MCP tools. The investigator agent receives only its exact
+observation allowlist; restart and rollback are excluded.
 
-## 4. Skill
+## 4. Read-only investigator
+
+The default setup creates the distinct `forgesre-investigator` agent with only observation tools. It has no
+synthetic probes, skills, sandbox, restart, or rollback capability. Run it with `./scripts/run-investigation.sh`; its
+preflight validates the saved agent name and allowlist, and it never submits an approval response.
+
+## 5. Skill (full profile only)
 
 Attached automatically when the sandbox can clone it (Daytona, or a local host whose git helpers live under
 `/usr/lib*`). On Fedora/RHEL the local sandbox cannot run git's HTTPS helper, so setup leaves the skill detached and the
@@ -56,7 +68,7 @@ with `FORGESRE_ATTACH_SKILL`.
 | Path | `skills/incident-diagnostics` |
 | Ref | `main` (`FORGESRE_SKILL_REF`) |
 
-## 5. Agent
+## 6. Full action-capable agent (explicit `--full` only)
 
 **Build Agent**, or the API spec setup writes:
 

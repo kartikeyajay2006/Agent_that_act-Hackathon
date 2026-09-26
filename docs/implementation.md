@@ -112,7 +112,7 @@ history is in the window.
 | Problem | Impact | Fix |
 |---|---|---|
 | Leaked pool connections were garbage-collected, so the DB showed nothing | no database evidence | v2 keeps them in an open batch — a realistic defect that holds DB sessions |
-| TrueForge blocks private hosts by default | MCP unreachable | loopback-only `OUTBOUND_URL_ALLOWED_HOSTS` in `start-trueforge.sh` |
+| TrueForge blocks loopback MCP endpoints and 0.2.1 has no stdio transport | local MCP cannot be attached safely | detect transports from installed OpenAPI; refuse loopback and require an approved non-loopback endpoint |
 | MCP SDK v2 renamed FastMCP → `MCPServer` | outdated examples break | written against the installed v2 API |
 | TrueForge stores approvals as turn inputs, not events | attestation missed them | attestation reads `/sessions/{id}/turns` |
 | Local sandbox cannot run git HTTPS on Fedora | skill install failed and broke the sandbox | detect; deliver the analyzer through the MCP bridge instead |

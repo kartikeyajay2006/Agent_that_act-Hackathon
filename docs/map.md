@@ -107,7 +107,7 @@ Every file, what it does, and where to look when you want to change something. ~
 1. **TrueForge** — the model emits `rollback_deployment`; the agent spec (written by `trueforge.py::agent_manifest`)
    lists it in `require_approval_for_tools`, so TrueForge ends the turn with `tool.approval_required`.
 2. **Human** clicks Allow; TrueForge records a `user.tool_approval` turn input and dispatches the call to
-   `http://127.0.0.1:18900/mcp` with the connector's Bearer token.
+   `FORGESRE_MCP_URL` (approved non-loopback URL) with the connector's Bearer token; local loopback is refused by setup.
 3. **`server.py`** — `BearerAuth` checks the token; `rollback_deployment()` validates argument shapes (pydantic
    patterns) and calls `ops.rollback` in a worker thread; every call is recorded as a `tool_call` audit event.
 4. **`ops.py::rollback`** — policy (`config/policy.yaml`), catalog lookups (`catalog.py`), live version

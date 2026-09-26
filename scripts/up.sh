@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One command: production stack + MCP server + TrueForge + ForgeSRE agent, then a healthy baseline.
+# One command: production stack + MCP server + TrueForge + read-only investigator setup.
 source "$(dirname "$0")/lib.sh"
 
 [[ -f "$ROOT/.env" ]] || "$ROOT/scripts/setup.sh"
@@ -15,10 +15,10 @@ fi
 cat <<MSG
 
 $(ok "ForgeSRE is up")
-  TrueForge UI      http://localhost:${TRUEFORGE_PORT:-8790}   (Agents → forgesre → Try)
+  TrueForge UI      http://localhost:${TRUEFORGE_PORT:-8790}   (Agents → forgesre-investigator → Try)
   Mission control   http://127.0.0.1:${FORGESRE_MCP_PORT:-18900}/dashboard
   Checkout API      http://127.0.0.1:${GATEWAY_HOST_PORT:-18080}/checkout
   Prometheus        http://127.0.0.1:${PROMETHEUS_HOST_PORT:-19090}
 
-  Next: ./scripts/trigger-incident.sh   then ask the agent to investigate.
+  Next: run ./scripts/run-investigation.sh for a read-only investigation.
 MSG

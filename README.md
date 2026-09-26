@@ -150,16 +150,27 @@ MODEL_ID=claude-sonnet-5
 MODEL_API_KEY=sk-...
 ```
 
-Then one command brings everything up and ends on a verified healthy baseline:
+### Read-only investigation milestone
+
+The first-milestone profile is the separate saved agent `forgesre-investigator`; use
+`./scripts/setup-trueforge.sh` and then `./scripts/run-investigation.sh`. It is restricted to observation tools and has
+no sandbox, probes, restart, or rollback tools. TrueForge `0.2.1` exposes only URL-backed MCP manifest types, not
+stdio. Setup reads the installed OpenAPI schema and refuses loopback registration instead of weakening outbound
+protections. For a deployment with an approved reachable MCP endpoint, set `FORGESRE_MCP_URL` to its HTTPS `/mcp`
+URL. Do not publish the local development server just to bypass the policy.
+
+For an approved, TrueForge-reachable MCP URL configured in `FORGESRE_MCP_URL`, one command brings the components up.
+TrueForge 0.2.1 has no stdio transport, so the default local loopback URL intentionally fails setup preflight before
+any provider or MCP settings are written:
 
 ```bash
-./scripts/up.sh           # stack + MCP server + TrueForge + ForgeSRE agent
+./scripts/up.sh           # stack + MCP server + TrueForge + read-only investigator setup
 ./scripts/doctor.sh       # every component green? each failure prints its fix
 ```
 
 | Open | URL |
 |---|---|
-| TrueForge (the agent) | http://localhost:8790 → **Agents → forgesre → Try** |
+| TrueForge (read-only investigator) | http://localhost:8790 → **Agents → forgesre-investigator → Try** |
 | Mission control | http://127.0.0.1:18900/dashboard |
 
 ### Run the incident

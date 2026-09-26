@@ -24,9 +24,7 @@ check "gateway healthy"               "curl -fs http://127.0.0.1:${GATEWAY_HOST_
 check "prometheus up"                 "curl -fs http://127.0.0.1:${PROMETHEUS_HOST_PORT:-19090}/-/ready" "./scripts/start-demo.sh"
 check "MCP server up"                 "curl -fs http://127.0.0.1:${FORGESRE_MCP_PORT:-18900}/healthz" "./scripts/restart-mcp.sh"
 check "TrueForge up"                  "curl -fs ${TRUEFORGE_URL:-http://localhost:8790}/api/v1/capabilities" "./scripts/start-trueforge.sh"
-check "TrueForge sees forgesre tools" "curl -fs ${TRUEFORGE_URL:-http://localhost:8790}/api/v1/mcp-servers/forgesre/tools | grep -q rollback_deployment" "./scripts/setup-trueforge.sh"
-check "forgesre agent saved"          "curl -fs ${TRUEFORGE_URL:-http://localhost:8790}/api/v1/agents | grep -q '\"forgesre\"'" "./scripts/setup-trueforge.sh"
-check "rollback gated in agent spec"  "curl -fs ${TRUEFORGE_URL:-http://localhost:8790}/api/v1/agents | grep -q 'require_approval_for_tools\":\[\"rollback_deployment'" "./scripts/setup-trueforge.sh"
+check "read-only investigator profile" "forgesre investigator-preflight" "./scripts/setup-trueforge.sh"
 
 echo
 if ((fails)); then die "$fails check(s) failed"; else ok "all checks passed"; fi

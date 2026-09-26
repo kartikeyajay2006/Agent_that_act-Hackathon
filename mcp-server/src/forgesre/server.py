@@ -14,10 +14,12 @@ import os
 import time
 from collections.abc import Callable
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 import anyio
 import uvicorn
 from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import Field
 from starlette.requests import Request
@@ -365,16 +367,36 @@ class BearerAuth:
         await self.app(scope, receive, send)
 
 
+def transport_security_settings() -> TransportSecuritySettings:
+    """Allow loopback plus only the configured public tunnel hostname."""
+    allowed_hosts = ["127.0.0.1:*", "localhost:*"]
+    mcp_url = os.environ.get("FORGESRE_MCP_URL", "").strip()
+    if mcp_url:
+        hostname = urlsplit(mcp_url).hostname
+        if not hostname:
+            raise ValueError("FORGESRE_MCP_URL must contain a hostname")
+        allowed_hosts.extend([hostname, f"{hostname}:*"])
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=allowed_hosts,
+    )
+
+
 def build_app():
     from .dashboard import register
 
     register(mcp, ops, settings)
-    app = mcp.streamable_http_app(streamable_http_path="/mcp", stateless_http=True, host=settings.mcp_host)
+    app = mcp.streamable_http_app(
+        streamable_http_path="/mcp",
+        stateless_http=True,
+        host="127.0.0.1",
+        transport_security=transport_security_settings(),
+    )
     return BearerAuth(app, os.environ.get("FORGESRE_MCP_TOKEN") or None)
 
 
 def main() -> None:
-    uvicorn.run(build_app(), host=settings.mcp_host, port=settings.mcp_port, log_level="warning")
+    uvicorn.run(build_app(), host="127.0.0.1", port=settings.mcp_port, log_level="warning")
 
 
 if __name__ == "__main__":

@@ -102,8 +102,9 @@ flowchart LR
 | Analyzer skill | Python, no deps | `skills/incident-diagnostics` | Reference diagnosis run inside the sandbox |
 | Operator CLI | `forgesre` (same package) | scripts | deploy / reset / check / trueforge-setup / agent-run |
 
-Everything binds to `127.0.0.1`. TrueForge reaches the MCP server because `start-trueforge.sh` sets
-`OUTBOUND_URL_ALLOWED_HOSTS=["127.0.0.1","localhost"]` (TrueForge blocks private hosts by default).
+Everything in the demo binds to `127.0.0.1`. TrueForge `0.2.1` does not support stdio MCP, and its outbound URL
+protections reject loopback MCP endpoints. Setup keeps those protections unchanged and requires an approved reachable
+non-loopback endpoint in `FORGESRE_MCP_URL`; it does not publish the local development service.
 
 ---
 

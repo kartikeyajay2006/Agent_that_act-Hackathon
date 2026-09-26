@@ -15,6 +15,11 @@ if [[ -f "$ROOT/.env" ]]; then
   done <"$ROOT/.env"
 fi
 
+# One exported value is shared by setup, preflight, and the session runner.
+TRUEFORGE_URL="${TRUEFORGE_BASE_URL:-${TRUEFORGE_URL:-http://localhost:${TRUEFORGE_PORT:-8790}}}"
+TRUEFORGE_BASE_URL="$TRUEFORGE_URL"
+export TRUEFORGE_URL TRUEFORGE_BASE_URL
+
 COMPOSE=(docker compose -f "$ROOT/docker-compose.yml" --profile release-v2)
 
 say()  { printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
@@ -23,7 +28,10 @@ warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
 # Run the ForgeSRE operator CLI from the mcp-server project environment.
-forgesre() { VIRTUAL_ENV= uv run --quiet --project "$ROOT/mcp-server" forgesre "$@"; }
+forgesre() {
+  PYTHONPATH="$ROOT/mcp-server/src${PYTHONPATH:+:$PYTHONPATH}" VIRTUAL_ENV= \
+    uv run --quiet --project "$ROOT/mcp-server" forgesre "$@"
+}
 
 require_env() {
   [[ -f "$ROOT/.env" ]] || die ".env missing — run ./scripts/setup.sh first"
@@ -36,7 +44,8 @@ mcp_running() {
 start_mcp() {
   if mcp_running; then ok "MCP server already running (pid $(cat "$RUN_DIR/mcp.pid"))"; return; fi
   say "starting ForgeSRE MCP server on ${FORGESRE_MCP_HOST:-127.0.0.1}:${FORGESRE_MCP_PORT:-18900}"
-  VIRTUAL_ENV= nohup uv run --quiet --project "$ROOT/mcp-server" forgesre-mcp >"$RUN_DIR/mcp.log" 2>&1 &
+  PYTHONPATH="$ROOT/mcp-server/src${PYTHONPATH:+:$PYTHONPATH}" VIRTUAL_ENV= \
+    nohup uv run --quiet --project "$ROOT/mcp-server" forgesre-mcp >"$RUN_DIR/mcp.log" 2>&1 &
   echo $! >"$RUN_DIR/mcp.pid"
   for _ in $(seq 1 60); do
     mcp_running || die "MCP server exited during startup; see $RUN_DIR/mcp.log"
