@@ -1,0 +1,123 @@
+# ForgeSRE demo production environment.
+# Every published port is bound to 127.0.0.1 so the stack is safe on a laptop.
+name: forgesre
+
+x-app: &app
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "3" }
+
+x-healthcheck: &py-health
+  test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:' + sys.argv[1] + '/health', timeout=2)", "8000"]
+  interval: 3s
+  timeout: 3s
+  retries: 20
+
+services:
+  postgres:
+    <<: *app
+    image: postgres:16-alpine
+    container_name: forgesre-postgres
+    command: ["postgres", "-c", "max_connections=${PG_MAX_CONNECTIONS:-100}", "-c", "reserved_connections=3"]
+    environment:
+      POSTGRES_USER: payments
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: payments
+      MONITOR_PASSWORD: ${MONITOR_PASSWORD:?set MONITOR_PASSWORD in .env}
+    volumes:
+      - ./demo/database/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+      - pgdata:/var/lib/postgresql/data
+    ports: ["127.0.0.1:${PG_HOST_PORT:-15432}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payments -d payments"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  postgres-exporter:
+    <<: *app
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: forgesre-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: postgresql://forgesre_monitor:${MONITOR_PASSWORD}@postgres:5432/payments?sslmode=disable
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  payment-v1:
+    <<: *app
+    build: { context: ./demo, args: { SERVICE_DIR: payment-v1 } }
+    image: forgesre/payment-service:v1
+    container_name: forgesre-payment-v1
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "warning"]
+    environment: &payment-env
+      DATABASE_URL: postgresql://payments:${POSTGRES_PASSWORD}@postgres:5432/payments
+      DB_POOL_MIN: "4"
+      DB_POOL_MAX: ${PAYMENT_V1_POOL_MAX:-10}
+      DB_POOL_TIMEOUT_SECONDS: "2.0"
+    ports: ["127.0.0.1:${PAYMENT_V1_HOST_PORT:-18101}:8000"]
+    healthcheck: *py-health
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  payment-v2:
+    <<: *app
+    profiles: ["release-v2"]
+    build: { context: ./demo, args: { SERVICE_DIR: payment-v2 } }
+    image: forgesre/payment-service:v2
+    container_name: forgesre-payment-v2
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "warning"]
+    environment:
+      <<: *payment-env
+      DB_POOL_MAX: ${PAYMENT_V2_POOL_MAX:-85}
+    ports: ["127.0.0.1:${PAYMENT_V2_HOST_PORT:-18102}:8000"]
+    healthcheck: *py-health
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  gateway:
+    <<: *app
+    build: { context: ./demo, args: { SERVICE_DIR: gateway } }
+    image: forgesre/api-gateway:latest
+    container_name: forgesre-gateway
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "warning"]
+    environment:
+      PAYMENT_UPSTREAMS: '{"v1": "http://payment-v1:8000", "v2": "http://payment-v2:8000"}'
+      DEPLOY_STATE_FILE: /state/deployment.json
+      UPSTREAM_TIMEOUT_SECONDS: "5"
+    volumes:
+      - ./state:/state:ro
+    ports: ["127.0.0.1:${GATEWAY_HOST_PORT:-18080}:8080"]
+    healthcheck:
+      <<: *py-health
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"]
+    depends_on:
+      payment-v1: { condition: service_healthy }
+
+  traffic-generator:
+    <<: *app
+    build: { context: ./demo, args: { SERVICE_DIR: traffic-generator } }
+    image: forgesre/traffic-generator:latest
+    container_name: forgesre-traffic
+    command: ["python", "app.py"]
+    environment:
+      TARGET_URL: http://gateway:8080/checkout
+      REQUESTS_PER_SECOND: ${TRAFFIC_RPS:-10}
+    depends_on:
+      gateway: { condition: service_healthy }
+
+  prometheus:
+    <<: *app
+    image: prom/prometheus:v3.1.0
+    container_name: forgesre-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=6h
+    volumes:
+      - ./demo/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./demo/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ["127.0.0.1:${PROMETHEUS_HOST_PORT:-19090}:9090"]
+
+volumes:
+  pgdata:

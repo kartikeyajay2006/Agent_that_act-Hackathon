@@ -1,0 +1,56 @@
+# Service catalog for the demo production environment.
+# The MCP server only operates on what is declared here; anything else is rejected.
+environment: demo-production
+
+services:
+  api-gateway:
+    description: Public checkout entrypoint; routes /checkout to the active payment-service version
+    tier: edge
+    kind: single
+    container: forgesre-gateway
+    base_url: http://127.0.0.1:${GATEWAY_HOST_PORT:-18080}
+    metrics_service_label: api-gateway
+    depends_on: [payment-service]
+    user_facing: true
+
+  payment-service:
+    description: Captures payments and writes them to PostgreSQL
+    tier: critical
+    kind: versioned
+    depends_on: [postgres]
+    dependents: [api-gateway, checkout]
+    metrics_service_label: payment-service
+    versions:
+      v1:
+        instance: payment-service-v1
+        container: forgesre-payment-v1
+        compose_service: payment-v1
+        base_url: http://127.0.0.1:${PAYMENT_V1_HOST_PORT:-18101}
+        source_dir: demo/payment-v1
+      v2:
+        instance: payment-service-v2
+        container: forgesre-payment-v2
+        compose_service: payment-v2
+        compose_profile: release-v2
+        base_url: http://127.0.0.1:${PAYMENT_V2_HOST_PORT:-18102}
+        source_dir: demo/payment-v2
+
+  postgres:
+    description: Primary payments database
+    tier: data
+    kind: single
+    container: forgesre-postgres
+    stateful: true
+
+  prometheus:
+    description: Metrics and alert evaluation
+    tier: observability
+    kind: single
+    container: forgesre-prometheus
+    base_url: http://127.0.0.1:${PROMETHEUS_HOST_PORT:-19090}
+
+  traffic-generator:
+    description: Synthetic customer checkout load
+    tier: tooling
+    kind: single
+    container: forgesre-traffic

@@ -1,0 +1,34 @@
+# Symptom-based alerts. They describe what users feel, never why.
+groups:
+  - name: checkout-slo
+    rules:
+      - alert: CheckoutErrorRateHigh
+        expr: |
+          sum(rate(http_requests_total{service="api-gateway",route="/checkout",status!="200"}[30s]))
+            /
+          clamp_min(sum(rate(http_requests_total{service="api-gateway",route="/checkout"}[30s])), 0.001)
+            > 0.05
+        for: 10s
+        labels: { severity: page, service: api-gateway }
+        annotations:
+          summary: "More than 5% of checkout requests are failing"
+
+      - alert: CheckoutLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{service="api-gateway",route="/checkout"}[30s]))
+          ) > 1
+        for: 10s
+        labels: { severity: page, service: api-gateway }
+        annotations:
+          summary: "Checkout p95 latency above 1s"
+
+  - name: database
+    rules:
+      - alert: DatabaseConnectionsHigh
+        expr: |
+          sum(pg_stat_activity_count) / max(pg_settings_max_connections) > 0.8
+        for: 10s
+        labels: { severity: warning, service: postgres }
+        annotations:
+          summary: "PostgreSQL connection usage above 80% of max_connections"
