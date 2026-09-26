@@ -37,10 +37,15 @@ involves long evidence and multi-step reasoning.
 | URL | `http://127.0.0.1:18900/mcp` |
 | Auth | Header `Authorization: Bearer <FORGESRE_MCP_TOKEN from .env>` |
 
-TrueForge should list 16 tools. `rollback_deployment` shows as destructive, `restart_service` as write, the rest as
+TrueForge should list 17 tools. `rollback_deployment` shows as destructive, `restart_service` as write, the rest as
 read-only.
 
 ## 4. Skill
+
+Attached automatically when the sandbox can clone it (Daytona, or a local host whose git helpers live under
+`/usr/lib*`). On Fedora/RHEL the local sandbox cannot run git's HTTPS helper, so setup leaves the skill detached and the
+agent pulls the same analyzer through the MCP bridge (`get_reference_analyzer`) from inside the sandbox. Force either way
+with `FORGESRE_ATTACH_SKILL`.
 
 **Settings → Skills → Import from GitHub**
 
@@ -60,7 +65,7 @@ read-only.
   "name": "forgesre",
   "manifest": {
     "model": { "name": "<provider>/<model>", "params": { "temperature": 0.1 } },
-    "instructions": "<contents of agent/forgesre.system.md>",
+    "instructions": "<agent/forgesre.system.md with {{DIAGNOSTICS_SOURCE}} filled in by setup>",
     "mcp_servers": [{
       "name": "forgesre",
       "enable_tools": ["@all"],
@@ -78,6 +83,9 @@ read-only.
   }
 }
 ```
+
+If you paste the instructions into the UI by hand, replace `{{DIAGNOSTICS_SOURCE}}` with how to run the analyzer
+(skill path, or the `mcp-client call-tool forgesre get_reference_analyzer …` line setup writes).
 
 In the UI: **Select MCP Tools → forgesre**, make sure the shield (approval) is on for `rollback_deployment` and off for
 `restart_service`; **Runtime Config → Sandbox** on.

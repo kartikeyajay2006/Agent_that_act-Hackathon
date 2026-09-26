@@ -24,6 +24,14 @@ def _num(v: Any, unit: str = "") -> str:
     return "n/a" if v is None else f"{v:g}{unit}"
 
 
+def _epoch(ts: str) -> float:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+
+
+def _clock(ts: str) -> str:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(UTC).strftime("%H:%M:%S")
+
+
 def _signals_table(before: dict[str, Any] | None, after: dict[str, Any] | None) -> list[str]:
     before, after = before or {}, after or {}
 
@@ -120,10 +128,14 @@ def build_report(
             f"- PostgreSQL connection utilization at detection: **{_pct(before.get('db_connection_utilization'))}**",
         ]
     lines += ["", "## Timeline (UTC)", ""]
+    timeline: list[tuple[str, str]] = []
     for d in deployments:
-        lines.append(
-            f"- {d['deployed_at'][11:19]} — deployment `{d['deployment_id']}`: payment-service "
-            f"{d.get('previous_version') or '∅'} → **{d['version']}** ({d['type']}, by {d['deployed_by']})"
+        timeline.append(
+            (
+                d["deployed_at"],
+                f"deployment `{d['deployment_id']}`: payment-service {d.get('previous_version') or '∅'} → "
+                f"**{d['version']}** ({d['type']}, by {d['deployed_by']})",
+            )
         )
     interesting = {
         "incident_started",
@@ -137,16 +149,21 @@ def build_report(
         if e["type"] not in interesting:
             continue
         d = e["data"]
+        target = d.get("target") or (
+            f"{d.get('service')} {d.get('from_version')} → {d.get('to_version')}" if d.get("to_version") else ""
+        )
         what = {
             "incident_started": f"incident opened: {d.get('title')}",
             "evidence_collected": f"evidence bundle collected ({d.get('window_minutes')} min window)",
             "risk_assessed": f"risk assessed for {d.get('action')} → {d.get('risk_level')}",
-            "action_started": f"{e['source']} started ({d.get('target') or d.get('to_version') or ''})",
+            "action_started": f"{e['source']} started ({target})",
             "action_completed": f"{e['source']} {e['status']} in {d.get('duration_seconds')}s",
             "verification_completed": f"verification → **{e['status']}** "
             f"(failed: {', '.join(d.get('failed_criteria') or []) or 'none'})",
         }[e["type"]]
-        lines.append(f"- {e['timestamp'][11:19]} — {what}")
+        timeline.append((e["timestamp"], what))
+    for ts, what in sorted(timeline, key=lambda item: _epoch(item[0])):
+        lines.append(f"- {_clock(ts)} — {what}")
     lines += ["", "## Evidence", ""]
     lines += [f"{i}. {item.strip()}" for i, item in enumerate(evidence, 1)] or ["(none supplied)"]
     if sandbox_analysis:

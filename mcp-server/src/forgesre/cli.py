@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -22,7 +23,15 @@ from .ops import VERSIONED, Ops
 from .probes import probe, wait_ready
 from .results import ToolError
 from .synthetic import run_checkout_probes
-from .trueforge import AGENT_NAME, APPROVAL_GATED_TOOLS, MCP_SERVER_NAME, SKILL_NAME, TrueForgeError, from_env
+from .trueforge import (
+    AGENT_NAME,
+    APPROVAL_GATED_TOOLS,
+    MCP_SERVER_NAME,
+    SKILL_NAME,
+    TrueForgeError,
+    from_env,
+    model_params,
+)
 
 SCRAPE_INTERVAL_S = 2
 MIN_BASELINE_S = 45
@@ -159,6 +168,25 @@ def cmd_check(ops: Ops, expect: str, timeout: int) -> int:
         time.sleep(5)
 
 
+def _skill_can_install(env) -> bool:
+    """Git-backed skills are cloned inside the sandbox. TrueForge's Linux local sandbox can only read
+    /usr/lib*, /usr/local, /usr/bin…, so git's https helper must live there (Debian yes, Fedora no)."""
+    mode = env.get("FORGESRE_ATTACH_SKILL", "auto")
+    if mode in ("always", "never"):
+        return mode == "always"
+    if env.get("DAYTONA_API_KEY"):
+        return True
+    try:
+        exec_path = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return False
+    readable = (  # TrueForge local-sandbox read roots: Linux, then macOS (Xcode CLT, Homebrew)
+        "/usr/lib/", "/usr/lib64/", "/usr/local/", "/usr/bin", "/bin", "/lib/", "/lib64/",
+        "/Library/", "/opt/homebrew/",
+    )  # fmt: skip
+    return exec_path.startswith(readable)
+
+
 def cmd_trueforge_setup(ops: Ops) -> int:
     tf = from_env()
     env = os.environ
@@ -179,7 +207,13 @@ def cmd_trueforge_setup(ops: Ops) -> int:
     fqn = tf.configure_model(
         provider=provider, model_id=model_id, api_key=api_key, base_url=env.get("MODEL_BASE_URL") or None
     )
-    print(f"model provider configured: {fqn}")
+    print(f"agent model: {fqn}  params {model_params(fqn)}")
+
+    # Optional second provider (e.g. your own OpenAI key) so the model can be switched in the TrueForge UI.
+    if env.get("OPENAI_API_KEY") and provider != "openai":
+        ids = [m.strip() for m in env.get("OPENAI_MODEL_IDS", "gpt-4.1-mini").split(",") if m.strip()]
+        extra = tf.configure_provider(provider="openai", model_ids=ids, api_key=env["OPENAI_API_KEY"], base_url=None)
+        print(f"fallback provider: openai {extra} (selectable in the TrueForge model picker)")
 
     mcp_url = f"http://{ops.settings.mcp_host}:{ops.settings.mcp_port}/mcp"
     tf.configure_mcp(url=mcp_url, token=token)
@@ -188,25 +222,47 @@ def cmd_trueforge_setup(ops: Ops) -> int:
     gated = [t.get("name") for t in tools if (t.get("annotations") or {}).get("destructiveHint")]
     print(f"  destructive per annotations: {gated}")
 
+    daytona = False
     if env.get("DAYTONA_API_KEY"):
-        tf.configure_daytona(env["DAYTONA_API_KEY"])
-        print("sandbox provider: Daytona configured")
-    else:
-        print("sandbox provider: TrueForge local sandbox (standalone mode)")
-
-    with_skill = False
-    repo = env.get("FORGESRE_SKILL_REPO", "https://github.com/kartikeyajay2006/Agent_that_act-Hackathon")
-    if repo:
+        if tf.sandbox_provider() != "daytona":
+            print("sandbox provider: configuring Daytona (first time builds a snapshot; can take a few minutes)…")
         try:
-            tf.configure_skill(
-                repo_url=repo, ref=env.get("FORGESRE_SKILL_REF", "main"), path="skills/incident-diagnostics"
-            )
-            with_skill = True
-            print(f"skill '{SKILL_NAME}' registered from {repo}")
+            tf.configure_daytona(env["DAYTONA_API_KEY"])
+            daytona = True
+            print("sandbox provider: Daytona configured")
         except TrueForgeError as exc:
-            print(f"WARNING: skill not registered ({exc}); the agent will write its own diagnostic script")
+            print(f"WARNING: Daytona not configured — {exc}")
+            print("         falling back to TrueForge's local sandbox (fix the key's permissions and re-run)")
+    if not daytona:
+        print("sandbox provider: TrueForge local sandbox (standalone mode)")
+    env_for_skill = dict(env) if daytona else {k: v for k, v in env.items() if k != "DAYTONA_API_KEY"}
 
-    instructions = (ops.settings.root / "agent" / "forgesre.system.md").read_text()
+    repo = env.get("FORGESRE_SKILL_REPO", "https://github.com/kartikeyajay2006/Agent_that_act-Hackathon")
+    ref = env.get("FORGESRE_SKILL_REF", "main")
+    with_skill = _skill_can_install(env_for_skill)
+    if with_skill:
+        try:
+            tf.configure_skill(repo_url=repo, ref=ref, path="skills/incident-diagnostics")
+            print(f"skill '{SKILL_NAME}' registered from {repo} and attached")
+        except TrueForgeError as exc:
+            with_skill = False
+            print(f"WARNING: skill not registered ({exc})")
+    if with_skill:
+        source = (
+            "Load the attached `incident-diagnostics` skill and run its analyzer: "
+            "`python <skills dir>/incident-diagnostics/scripts/diagnose.py --window 15` (skills directory from your "
+            "sandbox instructions)."
+        )
+    else:
+        source = (
+            "Fetch the reference analyzer through the MCP bridge from inside the sandbox (no internet needed) and "
+            "run it: `mcp-client call-tool forgesre get_reference_analyzer '{}' | python3 -c \"import json,sys; "
+            "open('diagnose.py','w').write(json.load(sys.stdin)['source'])\" && python diagnose.py --window 15`."
+        )
+        print("skill not attached (sandbox cannot clone git skills here); analyzer delivered via the MCP bridge")
+    instructions = (
+        (ops.settings.root / "agent" / "forgesre.system.md").read_text().replace("{{DIAGNOSTICS_SOURCE}}", source)
+    )
     agent = tf.upsert_agent(tf.agent_manifest(model_fqn=fqn, instructions=instructions, with_skill=with_skill))
     print(f"agent '{AGENT_NAME}' saved (id {agent.get('id')}); approval required for {APPROVAL_GATED_TOOLS}")
     print(f"open {tf.base_url} -> Agents -> {AGENT_NAME} -> Try")
@@ -226,12 +282,23 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--expect", choices=["healthy", "incident"], required=True)
     c.add_argument("--timeout", type=int, default=120)
     sub.add_parser("trueforge-setup")
+    e = sub.add_parser("eval", help="score the agent on scenarios through TrueForge")
+    e.add_argument("--scenario", default="approve,deny,healthy", help="comma list: approve, deny, healthy")
+    e.add_argument("--runs", type=int, default=1)
     a = sub.add_parser("agent-run")
     a.add_argument("--prompt", required=True)
     g = a.add_mutually_exclusive_group()
     g.add_argument("--approve", action="store_true", help="approve approval-gated calls (testing)")
     g.add_argument("--deny", action="store_true", help="deny approval-gated calls (testing)")
     args = parser.parse_args(argv)
+    if args.cmd == "eval":
+        from .evaluate import main as run_eval
+
+        scenarios = [x.strip() for x in args.scenario.split(",") if x.strip()]
+        bad = [x for x in scenarios if x not in ("approve", "deny", "healthy")]
+        if bad:
+            parser.error(f"unknown scenario(s): {bad}")
+        return run_eval(get_settings(), scenarios, args.runs)
     if args.cmd == "agent-run":
         from .agent_driver import main as run_agent
 

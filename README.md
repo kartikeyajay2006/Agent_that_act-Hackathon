@@ -1,224 +1,145 @@
-# ForgeSRE
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="ForgeSRE: Detect, Investigate, Prove in sandbox, Act, human gate, Verify, Recover" width="100%">
+</p>
 
-**An autonomous production reliability agent that runs on TrueForge.** It investigates a live incident, proves its
-hypothesis in the TrueForge sandbox, fixes what it is allowed to fix, stops for a human before a production rollback,
-and only declares recovery when objective signals say so.
+<p align="center">
+  <b>An autonomous SRE agent that runs on TrueForge.</b><br>
+  It investigates a live production incident, proves its hypothesis with code it writes in the TrueForge sandbox,<br>
+  fixes what it is allowed to fix, and stops for a human before it rolls back production.
+</p>
 
-> Monitoring tells you something broke. ForgeSRE investigates why, acts on the system, and proves that production
-> recovered.
+<p align="center">
+  <img src="https://img.shields.io/badge/runs%20on-TrueForge%200.2.1-7fa7e6?style=flat-square" alt="Runs on TrueForge 0.2.1">
+  <img src="https://img.shields.io/badge/MCP-SDK%20v2%20·%2017%20tools-4fb39a?style=flat-square" alt="MCP SDK v2, 17 tools">
+  <img src="https://img.shields.io/badge/approval-TrueForge%20native%20gate-e0a43a?style=flat-square" alt="Native approval gate">
+  <img src="https://img.shields.io/badge/tests-63%20unit%20·%2012%20integration%20·%204%20TrueForge-4fb39a?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/stack-Docker%20Compose%20·%20Postgres%20·%20Prometheus-2b3a4a?style=flat-square" alt="Stack">
+</p>
 
-Built for the TrueFoundry × Polaris **Agents That Act** hackathon.
+<p align="center">
+  <a href="#quickstart"><b>Quickstart</b></a> ·
+  <a href="#showcase"><b>Showcase</b></a> ·
+  <a href="#where-it-stops"><b>Where it stops</b></a> ·
+  <a href="docs/architecture.md"><b>Architecture</b></a> ·
+  <a href="docs/README.md"><b>Docs</b></a> ·
+  <a href="docs/judging-map.md"><b>Judging map</b></a>
+</p>
 
-## The problem
+---
 
-When checkout starts failing at 2 a.m., an on-call engineer checks alerts, graphs, logs, recent deploys and the
-database, forms a theory, tries the cheapest fix, checks whether it worked, escalates the risky fix, and writes it all
-up. Most of that is mechanical. The parts that are not — judging evidence and authorising risky changes — are exactly
-where an agent needs hard boundaries.
+> Monitoring tells you production broke. **ForgeSRE finds out why, proves it, acts safely, and shows that production
+> actually recovered.** Built for the TrueFoundry × Polaris **Agents That Act** hackathon.
 
-## What ForgeSRE does
+## In 30 seconds
 
-```text
-alert → health → metrics → logs → deployments → database
-      → sandbox diagnosis (computed from evidence)
-      → hypothesis with evidence + confidence
-      → restart (safe, autonomous) → verify → NOT recovered
-      → risk assessment → rollback → ⏸ TrueForge approval → human allows
-      → real traffic switch → verify → RECOVERED → incident report
-```
-
-Every arrow is a real MCP tool call, a real sandbox execution, or a real TrueForge approval event.
-
-## 90-second example
-
-```text
-You      Checkout is failing in production. Investigate and recover the service.
-
-ForgeSRE get_incident_context       3 alerts firing: CheckoutErrorRateHigh (100%), CheckoutLatencyHigh (2.48 s),
-                                    DatabaseConnectionsHigh (92%)
-         get_service_logs           payment-service-v2: db_pool_timeout ×2260, active_connections=85/85
-         get_recent_deployments     payment-service v1 → v2 at 06:36:13
-         get_database_health        85 connections from payment-service-v2, all "idle in transaction"
-         sandbox: diagnose.py       failures 100% on v2 · v2 deployed 22 s before start · pool 1.0 · r=0.64 ·
-                                    evidence_score 1.0 (6/6 checks)
-         Hypothesis (HIGH)          v2 strands pooled connections in open transactions → pool exhaustion
-         restart_service v2         ✓ container back in 4.1 s
-         verify_recovery            ✗ NOT_RECOVERED — synthetic 0/20, errors 100%, DB 91%
-         assess_action_risk         HIGH · 617 req/min · v1 ready · releases 85 DB connections · approval required
-         rollback_deployment        ⏸ TrueForge: APPROVAL REQUIRED  → human clicks Allow
-                                    ✓ gateway now routes to v1, v2 stopped (2.5 s)
-         verify_recovery            ✓ RECOVERED — 20/20 synthetic, errors 0.0%, p95 49 ms, DB 7%
-         generate_incident_report   artifacts/incidents/INC-20260926-060714.md
-```
-
-(Illustrative transcript: every number is a real tool result recorded while testing this stack, collected across
-test runs of the individual steps.)
-
-## Why TrueForge is central
-
-ForgeSRE contains **no agent loop and no LLM client**. TrueForge runs the model, chooses tools, executes the sandbox,
-enforces the approval pause, and stores the session. ForgeSRE contributes the production systems, a narrow MCP tool
-surface, deterministic safety rules and evidence.
-
-| TrueForge capability | How ForgeSRE uses it |
+| | |
 |---|---|
-| Agent execution loop | The whole incident lifecycle |
-| Remote MCP connector (header auth) | Every production read and action |
-| Tool annotations + `require_approval_for_tools` | `restart_service` runs; `rollback_deployment` pauses for a human |
-| Native approval UI (`user.tool_approval`) | The rollback decision, which the MCP server then re-verifies |
-| Sandbox as a tool + Code Mode | Diagnostic analysis; evidence fetched via the harness-bridged `mcp_client` |
-| Skills (git-backed) | `skills/incident-diagnostics`, cloned into the sandbox on demand |
-| Sessions / events / turns API | Execution trace, dashboard approval banner, approval attestation, headless driver |
-| Local sandbox or Daytona | Local SRT sandbox in standalone mode; Daytona when `DAYTONA_API_KEY` is set |
+| **The job** | First response to a production incident: checkout is failing and someone has to find out why and fix it, now. |
+| **What the agent does** | Reads alerts, metrics, logs, deploy history and the database; **writes and runs a diagnostic in the TrueForge sandbox**; forms a hypothesis with evidence; tries the safe fix; **verifies it** — and when the safe fix doesn't work, goes back to the evidence. |
+| **Where it stops** | Before a production rollback. TrueForge holds the call and shows a human the exact arguments. Our server refuses to act unless TrueForge's own record shows that person allowed *this exact* call. |
+| **How it proves it worked** | `verify_recovery` checks readiness, 20 synthetic checkouts, error rate, p95 and database load against thresholds in config. "Looks fixed" is not a verdict. |
+| **What TrueForge does** | Everything agentic: the loop, tool routing, the sandbox, the approval pause, the session record. This repo has **no LLM client** and no agent loop of its own. |
 
-> The model decides what action may help. TrueForge decides whether that action is allowed to execute.
+## Showcase
 
-## Architecture
+<p align="center">
+  <img src="docs/assets/showcase/walkthrough.gif" alt="Walkthrough: healthy, incident, TrueForge trace, approval gate, recovered" width="92%">
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/assets/showcase/02-incident.png" alt="Mission control during the incident"><br><sub><b>1 · The incident.</b> Release v2 ships. Checkout errors hit 100 %, p95 2.5 s, PostgreSQL at 92 % of its connections, three alerts firing.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/showcase/06-trueforge-trace.png" alt="TrueForge agent steps"><br><sub><b>2 · TrueForge runs the agent.</b> Every step is a real MCP call. The two cube icons are sandbox runs: a script the agent wrote, then the reference analyzer.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/assets/showcase/03-approval-dashboard.png" alt="Dashboard waiting for approval"><br><sub><b>3 · The restart didn't fix it.</b> Verification says NOT_RECOVERED, so the agent escalates. Mission control shows TrueForge holding the rollback.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/showcase/04-trueforge-approval.png" alt="TrueForge tool approval panel"><br><sub><b>4 · The human gate.</b> TrueForge's native approval panel: <code>rollback_deployment</code> v2 → v1 with the agent's reason. Allow or Deny.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/assets/showcase/05-recovered.png" alt="Recovered"><br><sub><b>5 · Verified recovery.</b> Traffic back on v1, v2 retired, errors 0 %, p95 50 ms, database 7 %. Loop complete: RECOVERED.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/showcase/01-healthy.png" alt="Healthy baseline"><br><sub><b>6 · Back to baseline.</b> <code>./scripts/reset-demo.sh</code> restores a verified healthy state in about a minute, every time.</sub></td>
+  </tr>
+</table>
+
+<sub>Captured from a live run by <code>scripts/dev/capture_showcase.py</code>. For reproducible pictures the session used a scripted
+stand-in model; every tool call, the sandbox, the approval and all system state are real. The report it produced:
+<a href="artifacts/incidents/example-contract-test-approved.md">approved run</a> ·
+<a href="artifacts/incidents/example-contract-test-denied.md">denied run</a>.</sub>
+
+## How it works
 
 ```mermaid
 flowchart LR
-    U(["On-call engineer"]) -- prompt / Allow / Deny --> TF
-    subgraph TF["TrueForge"]
-        L["Agent loop"] --> G{{"Approval gate"}}
-        L -- Code Mode --> S["Sandbox + incident-diagnostics skill"]
-        E[("Session events + turns")]
-    end
-    subgraph M["ForgeSRE MCP server"]
-        R["read tools"]; Y["restart_service"]; X["rollback_deployment"]; V["verify_recovery"]; A[("audit log")]
-    end
-    subgraph P["Demo production (docker compose)"]
-        GW["api-gateway"] --> P1["payment v1"] & P2["payment v2"] --> DB[("PostgreSQL")]
-        PR["Prometheus"]; T["traffic"] --> GW
-    end
-    L --> R & Y & V
-    G -- after Allow --> X
-    S -- bridged MCP call --> R
-    X -- attest Allow --> E
-    R --> PR & DB & GW
-    Y --> P2
-    X -- route switch --> GW
-    D["Mission control :18900/dashboard"] -.-> A & PR & E
+    A["🚨 Alerts firing"] --> B["Investigate<br/>health · metrics · logs<br/>deploys · database"]
+    B --> C["Prove in the sandbox<br/>agent-written script +<br/>reference analyzer"]
+    C --> D["Hypothesis<br/>with evidence + confidence"]
+    D --> E{"Lowest-risk action<br/>assess_action_risk"}
+    E -- "YELLOW: restart" --> F["restart_service<br/>(autonomous)"]
+    E -- "RED: rollback" --> G["⏸ TrueForge approval<br/>human Allow / Deny"]
+    G -- Allow --> H["rollback_deployment<br/>attested · atomic switch"]
+    G -- Deny --> R["No change<br/>report UNRESOLVED"]
+    F --> V{"verify_recovery"}
+    H --> V
+    V -- NOT_RECOVERED --> B
+    V -- RECOVERED --> Z["📄 Incident report<br/>numbers from the audit log"]
 ```
 
-More detail, including the incident mechanics and rollback steps: [docs/architecture.md](docs/architecture.md).
+**Action ≠ success.** The restart *succeeds* — the container comes back in four seconds — and the incident is still
+there, because the defect is in the code of v2. The agent only learns that by measuring. That closed loop (act,
+measure, decide again) is the job, and it is why the rollback exists in the story at all.
 
-## Incident lifecycle
+The incident is real: payment-service v2 batches audit transactions in groups of 100 on an 85-connection pool, so
+nothing ever commits and every audited payment strands a connection `idle in transaction`. Nothing in the tools, the
+deployment metadata or the commit history says "v2 is broken" — the agent has to work it out. Details:
+[architecture §6](docs/architecture.md#6-the-demo-production-system).
 
-| Phase | Tools | What makes it real |
-|---|---|---|
-| Detect | `get_incident_context` | Prometheus alert rules on user-facing symptoms; opens an incident |
-| Investigate | `get_service_health`, `query_metrics`, `get_service_logs`, `get_recent_deployments`, `get_database_health` | Docker Engine API, Prometheus, container logs, `pg_stat_activity` |
-| Prove | sandbox `diagnose.py` ← `collect_incident_evidence` | Computed from aligned time series, log buckets and deploy history |
-| Act | `assess_action_risk`, `restart_service`, `rollback_deployment` | Container restart; atomic gateway route switch; previous version stopped |
-| Verify | `verify_recovery`, `run_synthetic_check` | Thresholds from `config/verification.yaml`; post-action windows only |
-| Recover | `generate_incident_report` | Timeline, actions and before/after rendered from the audit log |
+## Where it stops
 
-## Safety model
+| Class | Tools | Who decides | Enforced by |
+|---|---|---|---|
+| 🟢 **GREEN** | health, logs, metrics, database, deployments, evidence, risk, verification, report | the agent | — |
+| 🟡 **YELLOW** | `restart_service` | the agent, if `assess_action_risk` shows no blockers | allowlist · 2 per 10 min per target · `postgres` never |
+| 🔴 **RED** | `rollback_deployment` | **a human** | TrueForge `require_approval_for_tools` **and** server-side attestation |
+| ⛔ **never** | shell, raw Docker, raw PromQL/SQL, deletes, DB writes | nobody | not exposed at all |
 
-| Class | Tools | Rule |
-|---|---|---|
-| GREEN | reads, probes, verification, report | Autonomous |
-| YELLOW | `restart_service` | Autonomous if `assess_action_risk` has no blockers; allowlist + 2 per 10 min per target |
-| RED | `rollback_deployment` | TrueForge approval gate, then server-side attestation |
+The boundary sits where reversibility ends: a restart changes no code or data; a rollback changes what code serves
+every customer. Before calling it, the agent must write an **approval brief** — hypothesis, evidence, what it already
+tried and how verification went, blast radius from `assess_action_risk`, and the recovery plan.
 
-The model is never the only boundary:
+The rollback is protected twice:
 
-- **No shell, no raw Docker, no raw PromQL or SQL.** Metrics are named signals; services come from a catalog.
-- **Strict inputs.** Names and versions are regex-validated and looked up; `postgres` can never be restarted.
-- **Rollback validation.** Service allowlisted, `from_version` must be live, target must exist and pass `/ready`,
-  an incident must be open, same-version requests return `ALREADY_AT_TARGET`.
-- **Approval attestation.** Before switching traffic, the MCP server finds the human *Allow* for this exact call
-  (service, from, to) in TrueForge's session record and refuses to reuse it. Calling the endpoint directly, or
-  replaying an old approval, changes nothing (`APPROVAL_NOT_FOUND` / `APPROVAL_ALREADY_USED`).
-- **Code Mode cannot bypass the gate.** TrueForge blocks destructive tools inside sandbox scripts.
-- **Locked down by default.** Every port binds to 127.0.0.1, the MCP endpoint requires a bearer token, the database
-  tool uses a `pg_monitor` role, logs are bounded and secrets redacted, the sandbox receives no credentials.
+1. **TrueForge** pauses the call and shows the arguments. On *Deny* the MCP server never even receives it.
+2. **ForgeSRE** re-checks before touching anything: it finds the human *Allow* for this exact service/from/to in
+   TrueForge's session record, refuses to reuse an approval, and validates that `from` is live, `to` exists and is
+   ready, and an incident is open. Calling the endpoint directly changes nothing (`APPROVAL_NOT_FOUND`).
 
-## Demo incident
+More: [architecture §5](docs/architecture.md#5-the-approval-boundary-two-layers).
 
-`payment-service` v2 ships an audit trail: high-value payments get an audit row written in its own transaction on a
-dedicated pooled connection, committed in batches of 100. The pool holds 85 connections, so a batch never fills and
-every audited payment strands a connection `idle in transaction`. Within ~10 s the pool is exhausted and every
-checkout waits 2 s and fails. A restart releases the connections — for about ten seconds. The fix is the previous
-release.
+## Why TrueForge is central
 
-Nothing in the tools or the deployment metadata says "v2 is broken". The agent has to work it out.
-
-## MCP tools
-
-| Tool | Class | Purpose |
-|---|---|---|
-| `get_incident_context` | GREEN | Firing alerts, current signals, open incident |
-| `list_services` / `get_service_health` | GREEN | Container state, restarts, `/health`, `/ready`, which version serves traffic |
-| `get_service_logs` | GREEN | Filtered, bounded JSON logs with per-event counts |
-| `query_metrics` | GREEN | 14 named Prometheus signals with summaries and points |
-| `get_database_health` | GREEN | Connections by client and state, utilization |
-| `get_recent_deployments` / `get_active_deployment` | GREEN | Objective history; live gateway route |
-| `collect_incident_evidence` | GREEN | Aligned evidence bundle for sandbox analysis |
-| `assess_action_risk` | GREEN | Deterministic blast radius and blockers |
-| `get_incident_timeline` | GREEN | Recorded events for the open incident |
-| `run_synthetic_check` | probe | Marked checkout requests through the gateway |
-| `verify_recovery` | probe | Objective verdict against configured thresholds |
-| `restart_service` | YELLOW | Restart an allow-listed container, wait for liveness |
-| `rollback_deployment` | RED | Approval-gated, attested, atomic traffic switch |
-| `generate_incident_report` | report | Markdown + JSON report from recorded data |
-
-## Human approval
-
-Configured in the agent spec that `forgesre trueforge-setup` writes to TrueForge:
-
-```json
-"mcp_servers": [{
-  "name": "forgesre",
-  "enable_tools": ["@all"],
-  "require_approval_for_tools": ["rollback_deployment", "@destructive"],
-  "preload": true
-}]
-```
-
-`rollback_deployment` is also annotated `destructiveHint: true`, so it would be gated even by TrueForge's default.
-Verified end to end in `mcp-server/tests/test_trueforge_gate.py`: on **Deny** the MCP server never receives the call;
-on **Allow** it executes and records the attestation (session, tool call, approving turn, time).
-
-## Sandbox diagnosis
-
-`skills/incident-diagnostics/scripts/diagnose.py` runs in the TrueForge sandbox. It pulls
-`collect_incident_evidence` through `mcp_client` (bridged to the harness — no credentials in the sandbox) and
-computes: incident start, baseline and peak error rate, latency, which upstream version carried the failures,
-seconds from the last deployment to the start, pool and database saturation before/after, dominant backend error,
-pool-vs-error correlation, the effect of any earlier restart, and an evidence score from six independent checks. The
-suspect is derived from the data, never named in the code.
-
-## Verification model
-
-`verify_recovery` waits until `settle_seconds` have passed since the last action (so rate windows see only post-action
-traffic), then requires **all** of:
-
-| Criterion | Threshold (`config/verification.yaml`) |
+| TrueForge capability | How ForgeSRE uses it |
 |---|---|
-| Active version `/ready` | true |
-| Synthetic checkout success | ≥ 95% of 20 |
-| Checkout error rate (30 s) | ≤ 5% |
-| Checkout p95 latency | ≤ 1.0 s |
-| PostgreSQL connection utilization | ≤ 70% |
+| Agent execution loop | The whole incident lifecycle — we ship no loop and no LLM client |
+| Remote MCP connector (header auth) | Every production read and action |
+| Tool annotations + `require_approval_for_tools` | `restart_service` runs; `rollback_deployment` pauses for a human |
+| Native approval UI (`user.tool_approval`) | The rollback decision — which our server reads back to attest |
+| Sandbox as a tool + Code Mode | The agent's own diagnostic code; evidence arrives through the harness-bridged `mcp_client`, so no credentials enter the sandbox |
+| Skills (git-backed) | `skills/incident-diagnostics`, cloned into the sandbox where it can install |
+| Sessions · events · turns API | Trace, dashboard approval banner, attestation, headless driver, tests |
+| Local sandbox or Daytona | Local SRT sandbox by default; Daytona with `DAYTONA_API_KEY` |
 
-Missing data counts as a failure.
+> The model decides what action may help. TrueForge decides whether that action is allowed to execute.
 
-## Running locally
+## Quickstart
 
-Requirements: Docker with Compose v2, Node.js ≥ 22.14, [uv](https://docs.astral.sh/uv/), and for TrueForge's local
-sandbox on Linux `bwrap`, `socat`, `ripgrep` (or a Daytona key). macOS and Windows require a valid Daytona key for
-the sandbox provider. You also need an API key for a model TrueForge supports.
+**You need:** Docker with Compose v2 · Node.js ≥ 22.14 · [uv](https://docs.astral.sh/uv/) · a model API key for a
+provider TrueForge supports. On Linux, TrueForge's local sandbox also needs `bubblewrap socat ripgrep` (or set
+`DAYTONA_API_KEY`). macOS and Windows require a valid Daytona key for the sandbox provider.
 
 ```bash
-cp .env.example .env            # or let setup.sh create it with random secrets
-./scripts/setup.sh              # prerequisites, .env secrets, Python env, images
-# put MODEL_PROVIDER / MODEL_ID / MODEL_API_KEY in .env
+git clone https://github.com/kartikeyajay2006/Agent_that_act-Hackathon.git forgesre && cd forgesre
 
-./scripts/start-demo.sh         # production stack + MCP server
-./scripts/verify-healthy.sh
-./scripts/start-trueforge.sh    # TrueForge 0.2.1, UI on http://localhost:8790
-./scripts/setup-trueforge.sh    # model, MCP connector, skill, sandbox, agent + approval gate
+./scripts/setup.sh        # checks prerequisites, creates .env with random secrets, builds images
 ```
 
 ### Preflight and three-run rehearsal
@@ -270,51 +191,134 @@ fix the README or script before repeating the timing test. Shell scripts are che
 | `MODEL_ID` | Model id from TrueForge's catalog, e.g. `claude-sonnet-5` (setup validates it against the catalog) |
 | `MODEL_API_KEY` | Provider key (stays in TrueForge) |
 | `MODEL_BASE_URL` | Only for `custom` / `truefoundry` (OpenAI-compatible) |
-| `DAYTONA_API_KEY` | Optional; otherwise TrueForge's local sandbox is used |
+| `DAYTONA_API_KEY` | Optional on Linux with local sandbox tools; required on macOS and Windows |
 | `POSTGRES_PASSWORD`, `MONITOR_PASSWORD`, `FORGESRE_MCP_TOKEN` | Generated by `setup.sh` |
 
 ## Triggering the demo
 
+Open `.env` and set your model (IDs come from TrueForge's catalog — `setup-trueforge.sh` validates them):
+
 ```bash
-./scripts/reset-demo.sh         # known-good baseline in about a minute
-./scripts/trigger-incident.sh   # release pipeline ships payment-service v2
-./scripts/verify-incident.sh    # waits until the incident is observable
+MODEL_PROVIDER=anthropic          # or openai, google-gemini, truefoundry, custom, …
+MODEL_ID=claude-sonnet-5
+MODEL_API_KEY=sk-...
 ```
 
-Then in TrueForge (Agents → `forgesre` → Try) send:
+Then one command brings everything up and ends on a verified healthy baseline:
+
+```bash
+./scripts/up.sh           # stack + MCP server + TrueForge + ForgeSRE agent
+./scripts/doctor.sh       # every component green? each failure prints its fix
+```
+
+| Open | URL |
+|---|---|
+| TrueForge (the agent) | http://localhost:8790 → **Agents → forgesre → Try** |
+| Mission control | http://127.0.0.1:18900/dashboard |
+
+### Run the incident
+
+```bash
+./scripts/trigger-incident.sh     # the release pipeline ships payment-service v2
+./scripts/verify-incident.sh      # waits until the incident is observable (~20 s)
+```
+
+In TrueForge, send:
 
 ```text
 Production checkout failures are being reported. Investigate the incident, determine the root cause,
 take safe recovery actions, and restore the system.
 ```
 
-Or drive the same TrueForge session from a terminal: `./scripts/run-agent.sh` (asks you to Allow/Deny).
-Watch **mission control** at http://127.0.0.1:18900/dashboard.
+Watch the agent work, approve (or deny) the rollback when TrueForge asks, and read the report in
+`artifacts/incidents/`. Run it again any time with `./scripts/reset-demo.sh`.
 
-## Testing
+Prefer a terminal? `./scripts/run-agent.sh` drives the same TrueForge session and asks you to Allow/Deny.
+
+### No model API key yet?
 
 ```bash
-cd mcp-server
-uv run pytest                                   # 63 unit + safety tests (33 + 30), no infrastructure
-uv run pytest -m integration                    # 12 tests against the live stack (~4 min)
-uv run pytest -m trueforge -s                   # approval gate + sandbox through a real TrueForge session
+./scripts/rehearse.sh --scripted
 ```
 
-## Demo script
+A scripted stand-in model drives the saved agent so you can see the whole flow; TrueForge, the tools, the sandbox and
+the approval gate are all real, and **you** click Allow or Deny in the TrueForge UI. It is a rehearsal and test aid,
+not the agent.
 
-See [docs/demo.md](docs/demo.md) for the 2-minute run of show and recovery tips, and
-[docs/judging-map.md](docs/judging-map.md) for where each claim lives in the code.
+## MCP tools
+
+<details>
+<summary><b>17 tools</b> — narrow, validated, bounded (click to expand)</summary>
+
+| Tool | Class | Purpose |
+|---|---|---|
+| `get_incident_context` | GREEN | Firing alerts, current signals; opens the incident |
+| `list_services` · `get_service_health` | GREEN | Container state, restarts, `/health`, `/ready`, which version serves traffic |
+| `get_service_logs` | GREEN | Filtered, bounded JSON logs with per-event counts and first/last seen |
+| `query_metrics` | GREEN | 14 named Prometheus signals (no raw PromQL) |
+| `get_database_health` | GREEN | Connections by client and state, utilization |
+| `get_recent_deployments` · `get_active_deployment` | GREEN | Objective history; route observed live at the gateway |
+| `collect_incident_evidence` | GREEN | Aligned time series + log buckets + deploys, for sandbox analysis |
+| `get_reference_analyzer` | GREEN | Analyzer source, fetched into the sandbox through the MCP bridge |
+| `assess_action_risk` | GREEN | Deterministic blast radius: request rate, dependents, target readiness, blockers |
+| `get_incident_timeline` | GREEN | Recorded events for the open incident |
+| `run_synthetic_check` | probe | Marked checkout requests through the public gateway |
+| `verify_recovery` | probe | Verdict against `config/verification.yaml`, post-action window only |
+| `restart_service` | YELLOW | Restart an allow-listed container, wait for liveness |
+| `rollback_deployment` | RED | Approval-gated, attested, atomic traffic switch, previous version stopped |
+| `generate_incident_report` | report | Markdown + JSON; timeline and numbers rendered from the audit log |
+
+</details>
+
+## Verified
+
+| Suite | Result | What it proves |
+|---|---|---|
+| `uv run pytest` | **63 passed** | parsing, thresholds, report numbers, injection, allowlists, rate limit, rollback validation, attestation refusal and replay |
+| `uv run pytest -m integration` | **12 passed** | on the live stack: incident appears, evidence is real, the right container restarts, restart ≠ recovery, rollback switches traffic, RECOVERED, reset works |
+| `test_trueforge_lifecycle.py` · allow | **passed** | TrueForge routed 12 tool calls, 2 sandbox runs with bridged evidence, NOT_RECOVERED → RECOVERED, attested rollback, report RESOLVED |
+| `test_trueforge_lifecycle.py` · deny | **passed** | same investigation; on Deny the rollback never reached the server, v2 untouched, report UNRESOLVED |
+| `test_trueforge_gate.py` (real local model) | **passed** | deny: zero rollback calls reached the server; allow: executed with attestation |
+
+Run them yourself: [docs/implementation.md → How it was verified](docs/implementation.md#how-it-was-verified).
+
+## Repository
+
+```text
+agent/          instructions TrueForge runs · setup guide · demo prompts
+config/         services · policy (who may do what) · verification thresholds
+demo/           the production system: gateway, payment v1/v2, Postgres, Prometheus, traffic
+mcp-server/     the ForgeSRE MCP server (Python) + tests
+skills/         incident-diagnostics skill (reference analyzer for the sandbox)
+scripts/        up · doctor · setup · reset · trigger · verify · rehearse · run-agent
+docs/           architecture · implementation · winning plan · map · judging map · demo
+```
+
+Full file-by-file map: [docs/map.md](docs/map.md).
+
+## Documentation
+
+| | |
+|---|---|
+| 🏗️ [**Full architecture**](docs/architecture.md) | components, lifecycle sequence, sandbox path, two-layer approval, state, security, failure handling |
+| 🧭 [**Problem and what's implemented**](docs/implementation.md) | why this exists, what is built, how each part was verified, what we learned |
+| 🏆 [**What we still need to win**](docs/winning-plan.md) | honest score against the rubric, must-dos before submission, live-demo risks |
+| 🗺️ [**Repository map**](docs/map.md) | every file, "where do I change X", one rollback call traced through the code |
+| ⚖️ [**Judging map**](docs/judging-map.md) | each judging criterion → code → evidence → what to show live |
+| 🎬 [**Demo runbook**](docs/demo.md) | five-minute run of show and recording checklist |
 
 ## Known limitations
 
-- One incident scenario, one versioned service, Docker Compose rather than Kubernetes.
-- The approval attestation searches recent TrueForge sessions over the local API; a multi-tenant deployment would
-  pass a session-scoped identity instead.
-- Local TrueForge mode has no login; keep it on localhost (as the TrueForge docs require).
-- Model quality matters: small local models can drive the tools but reason poorly over long evidence.
+- **No end-to-end run with a frontier model yet** — none was available while building. Every mechanism the model
+  relies on is verified through TrueForge (see *Verified*); rehearse with your key before a live demo.
+- One incident scenario and one versioned service; Docker Compose, not Kubernetes.
+- Tested on Linux (Fedora). macOS should work (Docker Desktop, TrueForge's macOS sandbox); Windows needs WSL2.
+- TrueForge local mode has no login; keep it on localhost. The approval attestation reads TrueForge's local API.
+- On Fedora/RHEL, TrueForge's local sandbox can't clone git skills, so the analyzer is delivered through the MCP bridge
+  instead (`FORGESRE_ATTACH_SKILL` to override).
 
-## Future work
+## AI assistance
 
-Kubernetes backend behind the same tools · more incident classes (memory leak, bad config, dependency outage) ·
-subagents for parallel evidence collection · PagerDuty/Slack triggers via TrueForge schedules · incident memory
-across sessions.
+As the hackathon rules require: this project was built with the help of an AI coding assistant (Claude Code), which
+was used for implementation, tests and documentation under the team's direction. The design decisions, the demo and
+the submission are the team's own, and the team can explain every part of the architecture.

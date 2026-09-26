@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390" role="img" aria-labelledby="t d">
+  <title id="t">ForgeSRE</title>
+  <desc id="d">Closed control loop: Detect, Investigate, Prove, Act, Verify, Recover. A human approval gate sits between Act and Verify, and a failed verification loops back to Investigate.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#e0a43a"/>
+    </marker>
+  </defs>
+  <style>
+    .sans { font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .title { font-size: 58px; font-weight: 700; fill: #dce4ec; letter-spacing: -1px; }
+    .sub { font-size: 22px; fill: #8a9bad; }
+    .label { font-size: 17px; fill: #dce4ec; text-anchor: middle; }
+    .num { font-size: 17px; font-weight: 700; text-anchor: middle; }
+    .note { font-size: 15px; fill: #e0a43a; text-anchor: middle; }
+    .chip { font-size: 15px; fill: #7fa7e6; }
+  </style>
+
+  <rect width="1200" height="390" rx="18" fill="#16202b"/>
+  <rect x="0.5" y="0.5" width="1199" height="389" rx="18" fill="none" stroke="#2b3a4a"/>
+
+  <text x="60" y="96" class="sans title">ForgeSRE</text>
+  <text x="62" y="136" class="sans sub">An autonomous SRE agent that investigates, proves, acts, and verifies.</text>
+  <text x="62" y="166" class="sans sub">TrueForge runs the loop. A human approves the risky step.</text>
+
+  <rect x="930" y="58" width="210" height="36" rx="18" fill="none" stroke="#7fa7e6"/>
+  <text x="1035" y="82" class="sans chip" text-anchor="middle">runs on TrueForge</text>
+
+  <!-- loop line -->
+  <line x1="110" y1="262" x2="1090" y2="262" stroke="#2b3a4a" stroke-width="3"/>
+
+  <!-- return path: verification failed → back to investigation -->
+  <path d="M870 286 C 858 356, 312 356, 300 290" fill="none" stroke="#e0a43a" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow)"/>
+  <text x="585" y="376" class="sans note">not recovered → back to investigation</text>
+
+  <!-- steps -->
+  <g class="sans">
+    <text x="110" y="226" class="label">Detect</text>
+    <circle cx="110" cy="262" r="22" fill="#1c2835" stroke="#e2665a" stroke-width="2.5"/>
+    <text x="110" y="268" class="num" fill="#e2665a">1</text>
+
+    <text x="300" y="226" class="label">Investigate</text>
+    <circle cx="300" cy="262" r="22" fill="#1c2835" stroke="#8a9bad" stroke-width="2.5"/>
+    <text x="300" y="268" class="num" fill="#dce4ec">2</text>
+
+    <text x="490" y="226" class="label">Prove in sandbox</text>
+    <circle cx="490" cy="262" r="22" fill="#1c2835" stroke="#8a9bad" stroke-width="2.5"/>
+    <text x="490" y="268" class="num" fill="#dce4ec">3</text>
+
+    <text x="680" y="226" class="label">Act</text>
+    <circle cx="680" cy="262" r="22" fill="#e0a43a"/>
+    <text x="680" y="268" class="num" fill="#16202b">4</text>
+
+    <!-- human approval gate -->
+    <rect x="713" y="246" width="124" height="32" rx="16" fill="#1c2835" stroke="#7fa7e6" stroke-width="2"/>
+    <rect x="729" y="255" width="4" height="14" rx="1" fill="#7fa7e6"/>
+    <rect x="737" y="255" width="4" height="14" rx="1" fill="#7fa7e6"/>
+    <text x="750" y="267" font-size="14" fill="#7fa7e6">human gate</text>
+
+    <text x="870" y="226" class="label">Verify</text>
+    <circle cx="870" cy="262" r="22" fill="#1c2835" stroke="#8a9bad" stroke-width="2.5"/>
+    <text x="870" y="268" class="num" fill="#dce4ec">5</text>
+
+    <text x="1060" y="226" class="label">Recover</text>
+    <circle cx="1060" cy="262" r="22" fill="#4fb39a"/>
+    <text x="1060" y="268" class="num" fill="#16202b">6</text>
+  </g>
+</svg>

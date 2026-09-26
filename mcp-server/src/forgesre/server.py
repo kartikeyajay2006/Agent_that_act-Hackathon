@@ -7,7 +7,9 @@ named explicitly in the agent's require_approval_for_tools.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
+import json
 import os
 import time
 from collections.abc import Callable
@@ -75,6 +77,23 @@ async def _acall(tool: str, coro_fn: Callable[[], Any], args: dict[str, Any]) ->
         return from_error(exc)
     ops.audit.record("tool_call", tool, result.get("status", "success"), {"args": args, "ms": _ms(started)})
     return result
+
+
+def _as_text(value: Any, limit: int = 6000) -> str | None:
+    """Sandbox output arrives as text or (after the SDK pre-parses JSON-looking strings) as an object,
+    sometimes still wrapped in the exec envelope. Normalise to readable text."""
+    if value is None:
+        return None
+    if isinstance(value, dict) and isinstance((value.get("response") or {}).get("result"), str):
+        value = value["response"]["result"]
+    if isinstance(value, str):
+        kept = [ln for ln in value.splitlines() if not ln.startswith("<frozen site>")]
+        value = "\n".join(kept).strip()
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return value[:limit]
+    return ("```json\n" + json.dumps(value, indent=2, default=str) + "\n```")[:limit]
 
 
 def _ms(started: float) -> int:
@@ -175,7 +194,11 @@ async def collect_incident_evidence(
     """Machine-readable evidence bundle for diagnostic analysis in the sandbox: aligned time series
     (unix ts, value) for checkout error rate / latency / traffic by version / errors by reason / pool and
     PostgreSQL connections, log event counts per 10s bucket per instance, deployments, container lifecycle,
-    alerts, and prior restart actions. Large: analyse it with code (Code Mode) rather than reading it."""
+    alerts, and prior restart actions. Large: analyse it with code (Code Mode) rather than reading it.
+    Shape: metrics[<signal>] = [{labels, points: [[unix_ts, value|null], ...]}]; deployments = [{version,
+    previous_version, type, deployed_at}]; log_event_totals = [{instance, level, event, count, first_seen,
+    last_seen}]; log_event_counts[instance][event] = [[bucket_ts, count]]; window = {start_unix, end_unix,
+    step_seconds}; container_lifecycle[instance]; alerts; restart_actions."""
     return await _call(
         "collect_incident_evidence", lambda: ops.collect_evidence(window_minutes), {"window_minutes": window_minutes}
     )
@@ -199,6 +222,26 @@ async def get_incident_timeline() -> dict[str, Any]:
     """The open incident's recorded timeline: tool calls, evidence, risk assessments, actions and
     verifications with timestamps."""
     return await _call("get_incident_timeline", ops.timeline, {})
+
+
+@mcp.tool(annotations=READ)
+async def get_reference_analyzer() -> dict[str, Any]:
+    """Source of the reference incident analyzer (skills/incident-diagnostics/scripts/diagnose.py). Fetch it from
+    INSIDE the sandbox so the code never passes through the conversation:
+    mcp-client call-tool forgesre get_reference_analyzer '{}' | python3 -c "import json,sys;
+    open('diagnose.py','w').write(json.load(sys.stdin)['source'])" && python diagnose.py --window 15"""
+
+    def read() -> dict[str, Any]:
+        path = settings.root / "skills" / "incident-diagnostics" / "scripts" / "diagnose.py"
+        source = path.read_text()
+        return ok(
+            filename="diagnose.py",
+            sha256=hashlib.sha256(source.encode()).hexdigest(),
+            lines=source.count("\n"),
+            source=source,
+        )
+
+    return await _call("get_reference_analyzer", read, {})
 
 
 # --------------------------------------------------------------------------- probes / verification
@@ -267,7 +310,10 @@ async def generate_incident_report(
     root_cause: Annotated[str, Field(min_length=20, max_length=2000, description="Hypothesis + mechanism")],
     evidence: Annotated[list[str], Field(min_length=1, max_length=12, description="Evidence items, one per line")],
     confidence: Literal["LOW", "MEDIUM", "HIGH"],
-    sandbox_analysis: Annotated[str | None, Field(max_length=3000, description="Sandbox diagnostic output")] = None,
+    sandbox_analysis: Annotated[
+        str | dict[str, Any] | list[Any] | None,
+        Field(description="Sandbox diagnostic output (text or the analyzer's JSON object)"),
+    ] = None,
     human_decisions: Annotated[list[str], Field(max_length=10)] = [],  # noqa: B006
     follow_ups: Annotated[list[str], Field(max_length=10)] = [],  # noqa: B006
 ) -> dict[str, Any]:
@@ -284,7 +330,7 @@ async def generate_incident_report(
                 root_cause=root_cause,
                 evidence=evidence,
                 confidence=confidence,
-                sandbox_analysis=sandbox_analysis,
+                sandbox_analysis=_as_text(sandbox_analysis),
                 human_decisions=human_decisions,
                 follow_ups=follow_ups,
             )
