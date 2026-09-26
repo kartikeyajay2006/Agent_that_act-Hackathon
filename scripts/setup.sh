@@ -3,7 +3,7 @@
 source "$(dirname "$0")/lib.sh"
 
 say "checking prerequisites"
-for bin in docker uv node curl openssl; do
+for bin in docker uv node curl python3; do
   command -v "$bin" >/dev/null || die "missing prerequisite: $bin"
 done
 docker compose version >/dev/null || die "docker compose v2 is required"
@@ -16,20 +16,18 @@ if ((${#missing[@]})); then
 fi
 ok "prerequisites present"
 
-[[ -f .env ]] || cp .env.example .env
-# Replace placeholder or empty secrets with random values (works whether or not .env was copied by hand).
-fill_secret() {
-  local key=$1 bytes=$2 current
-  current=$(grep -E "^${key}=" .env | cut -d= -f2-)
-  if [[ -z "$current" || "$current" == change-me* ]]; then
-    sed -i.bak "s/^${key}=.*/${key}=$(openssl rand -hex "$bytes")/" .env && rm -f .env.bak  # GNU + BSD sed
-    ok "generated ${key}"
-  fi
-}
-fill_secret POSTGRES_PASSWORD 16
-fill_secret MONITOR_PASSWORD 16
-fill_secret FORGESRE_MCP_TOKEN 24
-grep -qE "^MODEL_API_KEY=.+" .env || warn "MODEL_API_KEY is empty — add your model provider key to .env before ./scripts/setup-trueforge.sh"
+# Do not infer that a database is new if Docker is unavailable: that could
+# replace credentials for an existing persistent volume.
+docker info >/dev/null 2>&1 || die "cannot inspect Docker state; start Docker before initializing local credentials"
+database_exists=false
+if docker volume inspect forgesre_pgdata >/dev/null 2>&1 || docker container inspect forgesre-postgres >/dev/null 2>&1; then
+  database_exists=true
+fi
+if [[ "$database_exists" == true ]]; then
+  python3 scripts/ensure-env.py --database-exists
+else
+  python3 scripts/ensure-env.py
+fi
 
 say "installing MCP server environment (uv)"
 (cd mcp-server && VIRTUAL_ENV= uv sync --quiet)

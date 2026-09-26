@@ -36,6 +36,15 @@ Do not show `.env` or any API key on screen.
 | 4:30 | Open `artifacts/incidents/INC-….md` | "Every number in the report comes from recorded tool results." |
 | 4:45 | Close | "Monitoring tells you production broke. ForgeSRE finds out why, proves it, acts safely, and shows that production actually recovered." |
 
+## Alternate incident: latency regression
+
+For a second scenario using the same observation and recovery tools, run `./scripts/reset-demo.sh` and then
+`./scripts/trigger-incident.sh latency-regression`. `config/incidents.yaml` maps that name to the catalogued v3 release;
+the processor delay is configurable through `PAYMENT_V3_PROCESSOR_LATENCY_MIN_MS` and
+`PAYMENT_V3_PROCESSOR_LATENCY_MAX_MS`. The existing latency alert makes the incident observable even when synthetic
+requests still succeed. Use the same TrueForge agent flow and approval gate as the pool-pressure incident. Reset between
+scenarios.
+
 If there is time, or as a separate 20-second clip: reset, trigger, same prompt, click **Deny** — route stays v2,
 `grep rollback_deployment artifacts/audit/events.jsonl` is empty, the agent lists safe next steps.
 

@@ -51,6 +51,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 class Settings:
     root: Path
     services: dict[str, Any]
+    incidents: dict[str, Any]
     policy: dict[str, Any]
     verification: dict[str, Any]
     prometheus_url: str
@@ -97,6 +98,14 @@ def validate(settings: Settings) -> None:
     for action in ("restart_service", "rollback_deployment"):
         if action not in settings.policy.get("actions", {}):
             raise ValueError(f"config/policy.yaml has no policy for {action}")
+    scenarios = settings.incidents.get("scenarios", {})
+    default_scenario = settings.incidents.get("default_scenario")
+    if not scenarios or default_scenario not in scenarios:
+        raise ValueError("config/incidents.yaml must define scenarios and a valid default_scenario")
+    for name, scenario in scenarios.items():
+        service = settings.service_map.get(scenario.get("service"), {})
+        if scenario.get("version") not in service.get("versions", {}):
+            raise ValueError(f"config/incidents.yaml scenario '{name}' references an unknown service version")
 
 
 @lru_cache(maxsize=1)
@@ -111,6 +120,7 @@ def get_settings() -> Settings:
     settings = Settings(
         root=root,
         services=services,
+        incidents=_load_yaml(config_dir / "incidents.yaml"),
         policy=_load_yaml(config_dir / "policy.yaml"),
         verification=_load_yaml(config_dir / "verification.yaml"),
         prometheus_url=os.environ.get("PROMETHEUS_URL", f"http://127.0.0.1:{prom_port}"),

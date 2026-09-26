@@ -2,8 +2,7 @@
 # Run TrueForge (standalone/local mode) with the settings ForgeSRE needs.
 #   - pinned version for reproducibility
 #   - data kept in ./.trueforge (SQLite)
-#   - outbound allowlist limited to loopback so TrueForge can reach the local
-#     ForgeSRE MCP server (TrueForge blocks private hosts by default)
+#   - outbound URL protections remain at TrueForge defaults
 source "$(dirname "$0")/lib.sh"
 require_env
 
@@ -12,8 +11,6 @@ TRUEFORGE_STATE_DIR="${TRUEFORGE_STATE_DIR:-$ROOT/.trueforge}"
 mkdir -p "$TRUEFORGE_STATE_DIR"
 export SQLITE_PATH="${SQLITE_PATH:-$TRUEFORGE_STATE_DIR/trueforge.sqlite}"
 export PORT="${TRUEFORGE_PORT:-8790}"
-export OUTBOUND_URL_ALLOWED_HOSTS="${OUTBOUND_URL_ALLOWED_HOSTS:-[\"127.0.0.1\",\"localhost\"]}"
-
 if curl -fs "http://localhost:$PORT/api/v1/capabilities" >/dev/null 2>&1; then
   ok "TrueForge already running on http://localhost:$PORT"
   exit 0

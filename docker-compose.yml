@@ -75,6 +75,23 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  payment-v3:
+    <<: *app
+    profiles: ["release-v3"]
+    build: { context: ./demo, args: { SERVICE_DIR: payment-v2 } }
+    image: forgesre/payment-service:v3
+    container_name: forgesre-payment-v3
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "warning"]
+    environment:
+      <<: *payment-env
+      APP_VERSION: v3
+      PROCESSOR_LATENCY_MIN_MS: ${PAYMENT_V3_PROCESSOR_LATENCY_MIN_MS:-1200}
+      PROCESSOR_LATENCY_MAX_MS: ${PAYMENT_V3_PROCESSOR_LATENCY_MAX_MS:-1500}
+    ports: ["127.0.0.1:${PAYMENT_V3_HOST_PORT:-18103}:8000"]
+    healthcheck: *py-health
+    depends_on:
+      postgres: { condition: service_healthy }
+
   gateway:
     <<: *app
     build: { context: ./demo, args: { SERVICE_DIR: gateway } }
@@ -82,7 +99,7 @@ services:
     container_name: forgesre-gateway
     command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "warning"]
     environment:
-      PAYMENT_UPSTREAMS: '{"v1": "http://payment-v1:8000", "v2": "http://payment-v2:8000"}'
+      PAYMENT_UPSTREAMS: '{"v1": "http://payment-v1:8000", "v2": "http://payment-v2:8000", "v3": "http://payment-v3:8000"}'
       DEPLOY_STATE_FILE: /state/deployment.json
       UPSTREAM_TIMEOUT_SECONDS: "5"
     volumes:

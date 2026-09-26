@@ -33,6 +33,7 @@ packages = ["src/forgesre"]
 testpaths = ["tests"]
 addopts = "-m 'not integration and not trueforge'"
 markers = ["integration: needs the running docker demo stack", "trueforge: needs TrueForge + a configured model"]
+pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 120

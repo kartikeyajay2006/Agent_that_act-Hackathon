@@ -24,7 +24,7 @@ action.
 | Harness doing the work (30) | 26–29 | Real model through TrueForge end to end: tools, **agent-written code in the Daytona sandbox**, native gate with the brief in the approval panel, attested rollback. Scored by `eval.sh`: approve 100, deny 94. | 28–30 |
 | It actually runs (25) | 17–20 | `setup.sh` → `up.sh`, `doctor.sh`, `preflight.sh`, `demo-ready.sh`, pinned TrueForge, gateway model. Timed on **one** Fedora laptop only. | 21–24 |
 | Where it stops (20) | 18–20 | Two-layer gate, single-use attested approvals, allowlists, rate limit, no shell; every real-model deny run held. | 19–20 |
-| Job worth handing over (15) | 11–13 | Real, repetitive on-call toil with a human keeping the one irreversible decision. One incident type. | 12–14 |
+| Job worth handing over (15) | 11–13 | Real, repetitive on-call toil with a human keeping the one irreversible decision. Two scenarios share the tools; the latency scenario still needs a full rehearsal. | 12–14 |
 | Demo clarity (10) | 3–5 | Video script, runbook, screenshots exist; **video not recorded yet**. | 8–10 |
 | **Total** | **~75–87** | | **~88–98** |
 
@@ -43,12 +43,12 @@ action.
 
 | Task | Gain | Effort |
 |---|---|---|
-| Keep Daytona under its 30 GiB cap: setup deletes stopped sandboxes after 30 min; check `app.daytona.io` before judging | A full disk silently breaks the sandbox step | 2 min |
-| Shorter verification for the live demo: `settle_seconds: 20`, `metric_window: 20s` in `config/verification.yaml` | Two verifications currently add ~60 s of waiting to a 5-minute demo | 5 min + rehearse |
-| Keep `gpt-4.1-mini` for stage (fast, cheap, reliable tool calls); keep a pre-recorded run as backup | Venue Wi-Fi and model latency are the biggest live risks | – |
-| A second incident type (e.g. bad config or memory growth) using the same tools | "Is it a one-trick demo?" objection; 15-pt criterion | 2–3 h |
-| Trigger from a schedule or webhook instead of a typed prompt (TrueForge schedules) | Looks like real on-call, not a chat | 1 h |
-| Build-story write-up from `docs/implementation.md` → "Problems found while building" | Separate community prize for best build story | 30 min |
+| Check Daytona free-space and configured cleanup before a live run | The provider's disk cap can silently block sandbox startup | 2 min |
+| Rehearse the shorter verification profile (`settle_seconds`, `metric_window`) from `config/verification.yaml` | Check that the configured timing fits the five-minute demo on the target stack | Rehearsal |
+| Choose a fast model from the active provider catalog and keep a pre-recorded backup (see `docs/stage-model.md`) | Venue Wi-Fi and model latency are major live risks; credentials and model selection stay in ignored `.env` | Choose, verify and record |
+| Rehearse the configurable processor-latency incident with the same tools | Demonstrates the diagnosis is not a one-scenario trick | End-to-end rehearsal needed |
+| Review and explicitly activate the configured read-only TrueForge schedule | Shows a non-chat trigger without enabling remediation tools | Schedule is configurable and paused by default |
+| Personalize the build story in `docs/build-story.md` and review the implementation notes | Makes the community-prize write-up specific to the team's experience | Team review needed |
 
 ## Things we should not claim
 

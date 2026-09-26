@@ -127,13 +127,58 @@ every real-model run.
 
 ## Problems found while building (and what we did)
 
-| Problem | Impact | Fix |
-|---|---|---|
-| Leaked pool connections were garbage-collected, so the DB showed nothing | no database evidence | v2 keeps them in an open batch — a realistic defect that holds DB sessions |
-| TrueForge blocks private hosts by default | MCP unreachable | loopback-only `OUTBOUND_URL_ALLOWED_HOSTS` in `start-trueforge.sh` |
-| MCP SDK v2 renamed FastMCP → `MCPServer` | outdated examples break | written against the installed v2 API |
-| TrueForge stores approvals as turn inputs, not events | attestation missed them | attestation reads `/sessions/{id}/turns` |
-| Local sandbox cannot run git HTTPS on Fedora | skill install failed and broke the sandbox | detect; deliver the analyzer through the MCP bridge instead |
-| Fetching the analyzer from GitHub inside the sandbox returned HTTP 502 once | flaky, needs venue internet | `get_reference_analyzer` tool, fetched with `mcp-client` from inside the sandbox |
-| MCP SDK pre-parses JSON-looking strings | report rejected sandbox JSON | tool accepts text or object |
-| Error-rate PromQL returned empty (not 0) with no errors | healthy check never passed | `or vector(0)` |
+The hard part was not making an agent call a tool. It was making the seams between the saved agent, TrueForge's API,
+the MCP transport, and the demo system agree—and keeping the safety boundary intact when they did not. These are the
+build failures that changed the design.
+
+### A 404 must not turn into “try the powerful agent”
+
+The first read-only run failed with `Agent not found: forgesre-investigator`. The setup path and investigation path had
+to agree on a persisted agent identity; silently trying the general-purpose agent would have hidden the setup defect
+and widened the tool surface. The integration now fails closed: it checks that the named investigator exists and
+that its saved MCP allowlist is exactly the observation set, with sandbox and skills disabled. The guard is exercised
+in [`test_read_only_investigation.py`](../mcp-server/tests/test_read_only_investigation.py).
+
+### “Reachable” is not the same as “permitted”
+
+TrueForge rejected a loopback MCP URL under its outbound URL protections. We checked the installed server schema for a
+same-machine transport instead of guessing: this TrueForge version exposed URL-backed MCP manifests, not stdio. A
+Cloudflare tunnel then exposed a second boundary: the MCP SDK's localhost Host-header protection rejected the
+tunnel's public host. The fix was not to disable that protection or bind the service publicly. The MCP server keeps
+DNS-rebinding protection enabled, stays bound to loopback, retains bearer auth, and allows only the hostname derived
+from its configured MCP URL in addition to localhost. Tests cover localhost, the configured host, and an unrelated
+host in [`test_transport_security.py`](../mcp-server/tests/test_transport_security.py). For local setups that cannot
+provide an approved reachable endpoint, setup reports the limitation rather than weakening the policy.
+
+### An error turn is not a successful turn with missing output
+
+The runner emitted `turn.created`, then failed while reading `.output` from a `TurnStateError`. That secondary Python
+exception obscured the model/runtime failure. The stream handler now branches on TrueForge's actual terminal state,
+surfaces the original error message, and only reads output from a completed turn. A regression fixture for the error
+state lives in [`test_read_only_investigation.py`](../mcp-server/tests/test_read_only_investigation.py).
+
+### The diagnosis needs evidence that survives the workload
+
+An early connection-leak simulation did not leave useful database evidence because the pooled connections could be
+reclaimed. The final v2 scenario instead holds connections in an open audit batch until the batch fills, producing
+observable pool pressure and `idle in transaction` sessions. That is why the investigator gathers independent
+signals—metrics, logs, database state, and deployment history—rather than inferring a cause from one alert. The second
+latency scenario reuses that same observation surface; its configuration and rehearsal status are tracked separately
+in [`config/incidents.yaml`](../config/incidents.yaml) and [`docs/demo.md`](demo.md).
+
+### Small runtime mismatches can look like product failures
+
+Several failures were caused by assumptions at library boundaries, not by the incident logic:
+
+- The local sandbox could not clone the git-backed analyzer on the tested Fedora setup, and one sandbox-side GitHub
+  fetch returned HTTP 502. The analyzer can instead be delivered by the MCP bridge, so the sandbox does not need
+  direct GitHub access.
+- The MCP SDK may parse JSON-looking tool arguments before calling the report handler. The handler accepts both text
+  and structured values rather than relying on one wire representation.
+- Prometheus returns an empty vector when there are no errors; treating “no series” as zero is necessary for a clean
+  baseline to pass verification. The error-rate query explicitly supplies zero in that case.
+- TrueForge records approval decisions as turn inputs. The attestation reads the session's turns, not only its event
+  stream, so a direct MCP call cannot mistake an absent event for human approval.
+
+The common lesson: inspect the installed API and the actual response shape at each boundary, then test the failure
+path itself. Do not turn a failed connection, missing metric, or pending approval into a permissive default.

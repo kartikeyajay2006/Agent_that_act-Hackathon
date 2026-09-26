@@ -164,7 +164,7 @@ def run(prompt: str, mode: str, base_url: str, out_dir: Path) -> dict[str, Any]:
 
 
 def main(prompt: str, mode: str) -> int:
-    base = os.environ.get("TRUEFORGE_URL", "http://localhost:8790")
+    base = os.environ.get("TRUEFORGE_BASE_URL") or os.environ.get("TRUEFORGE_URL", "http://localhost:8790")
     out_dir = Path(os.environ.get("FORGESRE_RUN_DIR", Path(__file__).resolve().parents[3] / ".run"))
     out_dir.mkdir(parents=True, exist_ok=True)
     try:

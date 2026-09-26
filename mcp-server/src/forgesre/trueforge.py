@@ -10,18 +10,35 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
+from trueforge_sdk import ScheduleManifest
+from trueforge_sdk import TrueForge as TrueForgeSDK
 
 AGENT_NAME = "forgesre"
+READ_ONLY_AGENT_NAME = "forgesre-investigator"
 MCP_SERVER_NAME = "forgesre"
 APPROVAL_GATED_TOOLS = ["rollback_deployment", "@destructive"]
 SKILL_NAME = "incident-diagnostics"
+READ_ONLY_TOOLS = [
+    "list_services",
+    "get_incident_context",
+    "get_service_health",
+    "get_service_logs",
+    "query_metrics",
+    "get_database_health",
+    "get_recent_deployments",
+    "get_active_deployment",
+    "collect_incident_evidence",
+    "get_incident_timeline",
+]
 
 
 class TrueForgeError(RuntimeError):
@@ -63,8 +80,14 @@ class TrueForge:
         self, method: str, path: str, body: Any | None = None, params: dict | None = None, timeout: float | None = None
     ) -> Any:
         try:
+            token = os.environ.get("TRUEFORGE_TOKEN")
             resp = httpx.request(
-                method, f"{self.base_url}{path}", json=body, params=params, timeout=timeout or self.timeout_s
+                method,
+                f"{self.base_url}{path}",
+                json=body,
+                params=params,
+                timeout=timeout or self.timeout_s,
+                headers={"Authorization": f"Bearer {token}"} if token else None,
             )
         except httpx.HTTPError as exc:
             raise TrueForgeError(f"TrueForge unreachable at {self.base_url}: {type(exc).__name__}") from exc
@@ -129,7 +152,49 @@ class TrueForge:
         m = p.get("manifest", p)
         return (m.get("type", ""), m.get("name", ""))
 
+    def mcp_transport_types(self) -> set[str]:
+        """Read supported MCP manifest transports from this server's OpenAPI schema."""
+        spec = self._req("GET", "/api/v1/openapi.json")
+        schemas = (spec.get("components") or {}).get("schemas") or {}
+        manifest = schemas.get("MCPServerManifest") or {}
+        transports = (manifest.get("discriminator") or {}).get("mapping") or {}
+        if transports:
+            return set(transports)
+        # Some OpenAPI generators omit the discriminator mapping but retain oneOf refs.
+        refs = [item.get("$ref", "").rsplit("/", 1)[-1] for item in manifest.get("oneOf", [])]
+        inferred = set()
+        for ref in refs:
+            lowered = ref.lower()
+            if "stdio" in lowered:
+                inferred.add("stdio")
+            elif "truefoundry" in lowered:
+                inferred.add("truefoundry")
+            elif "remote" in lowered:
+                inferred.add("remote")
+        if inferred:
+            return inferred
+        raise TrueForgeError("could not determine supported MCP transports from installed TrueForge OpenAPI schema")
+
+    @staticmethod
+    def _is_loopback_url(url: str) -> bool:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").rstrip(".").lower()
+        if host == "localhost" or host.endswith(".localhost"):
+            return True
+        try:
+            return ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            return False
+
     def configure_mcp(self, *, url: str, token: str) -> None:
+        if self._is_loopback_url(url):
+            raise TrueForgeError(
+                "refusing loopback remote MCP URL; use a supported stdio transport or provide "
+                "FORGESRE_MCP_URL as a real non-loopback endpoint"
+            )
+        transports = self.mcp_transport_types()
+        if "remote" not in transports:
+            raise TrueForgeError("installed TrueForge schema does not support remote MCP endpoints")
         manifest = {
             "type": "remote",
             "name": MCP_SERVER_NAME,
@@ -188,34 +253,42 @@ class TrueForge:
         instructions: str,
         with_skill: bool = False,
         params: dict[str, Any] | None = None,
+        read_only: bool = False,
     ) -> dict[str, Any]:
+        enabled_tools = READ_ONLY_TOOLS if read_only else ["@all"]
         return {
             "model": {"name": model_fqn, "params": params if params is not None else model_params(model_fqn)},
             "instructions": instructions,
             "mcp_servers": [
                 {
                     "name": MCP_SERVER_NAME,
-                    "enable_tools": ["@all"],
-                    "require_approval_for_tools": APPROVAL_GATED_TOOLS,
+                    "enable_tools": enabled_tools,
+                    "require_approval_for_tools": [] if read_only else APPROVAL_GATED_TOOLS,
                     "preload": True,
                 }
             ],
-            "skills": [{"name": SKILL_NAME}] if with_skill else [],
+            "skills": [{"name": SKILL_NAME}] if with_skill and not read_only else [],
             "config": {
-                "sandbox": {"enabled": True},
+                "sandbox": {"enabled": not read_only},
                 "generative_ui": {"enabled": False},
                 "ask_user_questions": {"enabled": False},
                 "dynamic_sub_agents": {"enabled": False},
-                "iteration_limit": 80,
+                "iteration_limit": 30 if read_only else 80,
             },
         }
 
-    def upsert_agent(self, manifest: dict[str, Any]) -> dict[str, Any]:
+    def upsert_agent(
+        self,
+        manifest: dict[str, Any],
+        *,
+        name: str = AGENT_NAME,
+        description: str = "Autonomous production reliability agent (investigate, diagnose, act, verify, report)",
+    ) -> dict[str, Any]:
         agents = self._req("GET", "/api/v1/agents").get("data", [])
-        existing = next((a for a in agents if a.get("name") == AGENT_NAME), None)
+        existing = next((a for a in agents if a.get("name") == name), None)
         body = {
-            "name": AGENT_NAME,
-            "description": "Autonomous production reliability agent (investigate, diagnose, act, verify, report)",
+            "name": name,
+            "description": description,
             "manifest": manifest,
         }
         if existing:
@@ -223,9 +296,86 @@ class TrueForge:
             return self._req("PUT", f"/api/v1/agents/{existing['id']}", update).get("data", {})
         return self._req("POST", "/api/v1/agents", body).get("data", {})
 
-    def get_agent(self) -> dict[str, Any] | None:
+    def get_agent(self, name: str = AGENT_NAME) -> dict[str, Any] | None:
         agents = self._req("GET", "/api/v1/agents").get("data", [])
-        return next((a for a in agents if a.get("name") == AGENT_NAME), None)
+        return next((a for a in agents if a.get("name") == name), None)
+
+    @staticmethod
+    def validate_read_only_agent(agent: dict[str, Any] | None) -> list[str]:
+        """Require the exact investigator profile and exact observation allowlist."""
+        if agent is None or agent.get("name") != READ_ONLY_AGENT_NAME:
+            raise TrueForgeError(f"saved agent '{READ_ONLY_AGENT_NAME}' is unavailable")
+        manifest = agent.get("manifest") or {}
+        servers = [s for s in manifest.get("mcp_servers", []) if s.get("name") == MCP_SERVER_NAME]
+        if len(servers) != 1 or len(manifest.get("mcp_servers", [])) != 1:
+            raise TrueForgeError(f"agent '{READ_ONLY_AGENT_NAME}' must have exactly one '{MCP_SERVER_NAME}' MCP entry")
+        tools = servers[0].get("enable_tools")
+        if not isinstance(tools, list) or set(tools) != set(READ_ONLY_TOOLS):
+            raise TrueForgeError(
+                f"agent '{READ_ONLY_AGENT_NAME}' tool allowlist mismatch; expected observation tools only"
+            )
+        config = manifest.get("config") or {}
+        sandbox = config.get("sandbox") or {}
+        if sandbox.get("enabled") is not False or manifest.get("skills"):
+            raise TrueForgeError(f"agent '{READ_ONLY_AGENT_NAME}' must have sandbox and skills disabled")
+        return list(tools)
+
+    def upsert_read_only_schedule(
+        self,
+        *,
+        name: str,
+        cron: str,
+        timezone: str,
+        task: str,
+        agent_name: str = READ_ONLY_AGENT_NAME,
+        activate: bool = False,
+        sdk_factory: Any = TrueForgeSDK,
+    ) -> dict[str, str]:
+        """Create/update a schedule only after confirming its target is the observation-only agent."""
+        for label, value in (("schedule name", name), ("cron", cron), ("timezone", timezone), ("task", task)):
+            if not value.strip():
+                raise TrueForgeError(f"TrueForge schedule {label} must not be empty")
+        if len(cron.split()) != 5:
+            raise TrueForgeError("TrueForge schedule cron must be a standard five-field expression")
+        self.validate_read_only_agent(self.get_agent(agent_name))
+
+        try:
+            sdk = sdk_factory(
+                base_url=self.base_url,
+                token=os.environ.get("TRUEFORGE_TOKEN") or None,
+                timeout=max(self.timeout_s, 600),
+            )
+            status = "active" if activate else "paused"
+            manifest = ScheduleManifest(cron=cron, timezone=timezone, task=task, status=status)
+            matching = [schedule for schedule in sdk.schedules.list() if schedule.name == name]
+            if len(matching) > 1:
+                raise TrueForgeError(f"multiple TrueForge schedules use the configured name '{name}'")
+            if matching:
+                existing = matching[0]
+                if existing.agent_name != agent_name:
+                    raise TrueForgeError(f"schedule '{name}' belongs to a different agent; refusing to replace it")
+                result = sdk.schedules.update(
+                    schedule_id=existing.id,
+                    name=name,
+                    manifest=manifest,
+                )
+                operation = "updated"
+            else:
+                result = sdk.schedules.create(agent_name=agent_name, name=name, manifest=manifest)
+                operation = "created"
+        except TrueForgeError:
+            raise
+        except Exception as exc:
+            raise TrueForgeError(f"TrueForge schedule API failed: {type(exc).__name__}: {exc}") from exc
+
+        schedule = getattr(result, "data", result)
+        return {
+            "operation": operation,
+            "id": str(schedule.id),
+            "name": str(schedule.name),
+            "agent_name": str(schedule.agent_name),
+            "status": status,
+        }
 
     # ------------------------------------------------------------------ attestation
     def session_events(self, session_id: str, max_pages: int = 20) -> list[dict[str, Any]]:
@@ -319,4 +469,6 @@ def _args_match(call_args: Any, arguments: dict[str, Any]) -> bool:
 
 
 def from_env() -> TrueForge:
-    return TrueForge(os.environ.get("TRUEFORGE_URL", "http://localhost:8790"))
+    return TrueForge(
+        os.environ.get("TRUEFORGE_BASE_URL") or os.environ.get("TRUEFORGE_URL", "http://localhost:8790")
+    )
